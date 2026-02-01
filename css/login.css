@@ -1,0 +1,383 @@
+/**
+ * Login Page Styles
+ * 
+ * Refactored to maintain app theme consistency
+ * Uses theme CSS variables for colors and styling
+ */
+
+/* Login Page Base */
+body.login-page {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg, #ECECEC);
+}
+
+/* Main Container */
+.login-container {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* Logo Section */
+.login-logo-section {
+  width: 50%;
+  background: linear-gradient(135deg, rgba(3, 41, 74, 0.05) 0%, rgba(67, 160, 222, 0.1) 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 3rem 2rem;
+  position: relative;
+}
+
+.login-logo-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  opacity: 0.8;
+  z-index: 0;
+}
+
+.login-logo-section > div {
+  position: relative;
+  z-index: 1;
+}
+
+.login-logo-section img {
+  max-width: 100%;
+  height: auto;
+  max-height: 350px;
+  width: auto;
+  display: block;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+}
+
+/* Form Section */
+.login-form-section {
+  width: 50%;
+  background: var(--white, #ffffff);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 3rem 2.5rem;
+}
+
+.login-form-section .max-w-md {
+  width: 100%;
+  max-width: 420px;
+  animation: fadeInUp 0.6s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Header Styles */
+.login-form-section h2 {
+  color: var(--primary, #03294A);
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+}
+
+.login-form-section p.text-gray-500 {
+  color: var(--muted, #6b7280);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  margin-bottom: 2rem;
+}
+
+/* Form Styles */
+.login-form-section form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.login-form-section form > div {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Labels */
+.login-form-section label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--primary, #374151);
+  margin-bottom: 0.5rem;
+  line-height: 1.5;
+}
+
+/* Input Fields */
+.login-form-section input[type="email"],
+.login-form-section input[type="password"],
+.login-form-section .login-input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 2px solid var(--muted, #d1d5db);
+  border-radius: var(--radius-md, 0.5rem);
+  font-size: 1rem;
+  font-family: 'Inter', sans-serif;
+  color: var(--primary, #03294A);
+  background: var(--white, #ffffff);
+  transition: all var(--transition-base, 0.3s ease);
+  box-sizing: border-box;
+}
+
+.login-form-section input[type="email"]:hover,
+.login-form-section input[type="password"]:hover,
+.login-form-section .login-input:hover {
+  border-color: var(--secondary, #9ca3af);
+}
+
+.login-form-section input[type="email"]:focus,
+.login-form-section input[type="password"]:focus,
+.login-form-section .login-input:focus {
+  outline: none;
+  border-color: var(--accent, #43A0DE);
+  box-shadow: 0 0 0 3px rgba(67, 160, 222, 0.1);
+  transform: translateY(-1px);
+}
+
+/* Remember Me Container */
+.remember-me-container {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+/* Checkbox */
+.remember-checkbox {
+  width: 1.25rem;
+  height: 1.25rem;
+  min-width: 1.25rem;
+  min-height: 1.25rem;
+  cursor: pointer;
+  accent-color: var(--accent, #43A0DE);
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--muted, #d1d5db);
+  border-radius: var(--radius-sm, 0.25rem);
+  transition: all var(--transition-fast, 0.15s ease);
+  display: block;
+  position: relative;
+  align-self: center;
+}
+
+.remember-checkbox:hover {
+  border-color: var(--accent, #43A0DE);
+}
+
+.remember-checkbox:focus {
+  outline: none;
+  border-color: var(--accent, #43A0DE);
+  box-shadow: 0 0 0 3px rgba(67, 160, 222, 0.1);
+}
+
+.remember-checkbox:checked {
+  background-color: var(--accent, #43A0DE);
+  border-color: var(--accent, #43A0DE);
+}
+
+/* Checkbox Label */
+.remember-label {
+  margin: 0;
+  padding: 0;
+  font-weight: 400;
+  font-size: 0.875rem;
+  color: var(--muted, #6b7280);
+  cursor: pointer;
+  user-select: none;
+  line-height: 1.25rem;
+  display: flex;
+  align-items: center;
+  height: 1.25rem;
+  align-self: center;
+}
+
+/* Submit Button */
+.login-submit-btn {
+  width: 100%;
+  padding: 1rem 1.5rem;
+  background: var(--primary, #03294A) !important;
+  color: var(--white, #ffffff) !important;
+  border: none;
+  border-radius: var(--radius-md, 0.5rem);
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: all var(--transition-base, 0.3s ease);
+  box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1));
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-submit-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.login-submit-btn:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.login-submit-btn:hover {
+  background: var(--secondary, #275F8E) !important;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1));
+}
+
+.login-submit-btn:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm, 0 1px 2px 0 rgba(0, 0, 0, 0.05));
+}
+
+.login-submit-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(3, 41, 74, 0.2);
+}
+
+.login-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Error Message */
+.login-form-section .bg-red-100 {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #dc2626;
+  border-radius: var(--radius-md, 0.5rem);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+  animation: shake 0.5s ease-in-out;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .login-container {
+    flex-direction: column;
+  }
+  
+  .login-logo-section,
+  .login-form-section {
+    width: 100%;
+    min-height: 50vh;
+  }
+  
+  .login-logo-section {
+    padding: 2rem 1rem;
+  }
+  
+  .login-logo-section img {
+    max-height: 200px;
+  }
+  
+  .login-form-section {
+    padding: 2rem 1.5rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .login-form-section .max-w-md {
+    max-width: 100%;
+  }
+  
+  .login-form-section h2 {
+    font-size: 1.75rem;
+  }
+  
+  .login-form-section {
+    padding: 1.5rem 1rem;
+  }
+  
+  .login-logo-section {
+    padding: 1.5rem 1rem;
+    min-height: 40vh;
+  }
+  
+  .login-logo-section img {
+    max-height: 150px;
+  }
+  
+  .login-form-section input[type="email"],
+  .login-form-section input[type="password"] {
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+  
+  .login-submit-btn {
+    min-height: 48px;
+    font-size: 1rem;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .login-logo-section {
+    display: none;
+  }
+  
+  .login-form-section {
+    width: 100%;
+  }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .login-page * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Focus Visible for Better Accessibility */
+.login-page input:focus-visible,
+.login-page button:focus-visible {
+  outline: 2px solid var(--accent, #43A0DE);
+  outline-offset: 2px;
+}
+
+/* Additional Theme Consistency */
+.login-form-section {
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.05);
+}
+
+.login-logo-section {
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
+}

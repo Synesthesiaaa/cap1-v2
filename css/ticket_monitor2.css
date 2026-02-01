@@ -1,0 +1,292 @@
+/* ----------------------------------------------------
+   GLOBAL + NAVBAR (Imported from ticket_monitor.css)
+---------------------------------------------------- */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+body {
+    font-family: 'Inter', sans-serif;
+    background: #ECECEC;
+    margin: 0;
+    color: #03294A;
+}
+
+/* ---- Navbar ---- */
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #03294A;
+    color: #fff;
+    padding: 10px 30px;
+}
+
+.topbar .logo {
+    display: flex;
+    align-items: center;
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.topbar .logo img {
+    height: 30px;
+    margin-right: 10px;
+}
+
+.topbar .nav-links a {
+    color: #fff;
+    text-decoration: none;
+    margin-left: 20px;
+    font-size: 14px;
+    transition: color 0.2s;
+}
+
+.topbar .nav-links a:hover {
+    color: #43A0DE;
+}
+
+/* ----------------------------------------------------
+   SUMMARY CARDS
+---------------------------------------------------- */
+
+.summary-card {
+    border-radius: 8px;
+    background: #fff;
+    padding: 14px;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.summary-card:hover {
+    transform: translateY(-2px);
+}
+
+/* ----------------------------------------------------
+   DROPDOWN FILTERS
+---------------------------------------------------- */
+
+.dropdown-container {
+    display: flex;
+    flex-direction: column;
+    font-size: 14px;
+}
+
+.dropdown-container label {
+    color: #555;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.dropdown {
+    position: relative;
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    min-width: 150px;
+}
+
+.dropdown .selected {
+    font-size: 14px;
+    color: #333;
+}
+
+.dropdown .chevron {
+    position: absolute;
+    right: 10px;
+    top: 40%;
+    font-size: 12px;
+    pointer-events: none;
+}
+
+.dropdown-list {
+    position: absolute;
+    top: 105%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 6px 0;
+    display: none;
+    z-index: 50;
+}
+
+.dropdown-list.visible {
+    display: block;
+}
+
+.dropdown-list li {
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+.dropdown-list li:hover {
+    background-color: #f1f1f1;
+}
+
+/* ----------------------------------------------------
+   TABLE STYLING
+---------------------------------------------------- */
+
+table {
+    border-collapse: collapse;
+}
+
+table thead th {
+    font-size: 13px;
+    font-weight: 600;
+    color: #444;
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+    background: #f4f4f4;
+}
+
+table tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+    font-size: 14px;
+    color: #333;
+}
+
+/* ----------------------------------------------------
+   STATUS COLORS (Your updated spec)
+---------------------------------------------------- */
+
+.status {
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: capitalize;
+}
+
+/* Pending → Yellow */
+.status.Pending,
+.status.pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+/* Assigning → Gray */
+.status.Assigning,
+.status.assigning {
+    background: #e5e7eb;
+    color: #4b5563;
+}
+
+/* Complete → Green */
+.status.Complete,
+.status.complete,
+.status.Completed,
+.status.completed {
+    background: #d3ffd7;
+    color: #075a1d;
+}
+
+/* Escalated → Red */
+.status.Escalated,
+.status.escalated {
+    background: #ffe5e5;
+    color: #8b0000;
+}
+
+/* Followup → Blue */
+.status.Followup,
+.status.followup {
+    background: #e0f2fe;
+    color: #075985;
+}
+
+/* ----------------------------------------------------
+   PRIORITY COLORS (Your updated spec)
+---------------------------------------------------- */
+
+.priority {
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 12px;
+}
+
+/* Low → Green */
+.priority.Low {
+    background: #d8ffd8;
+    color: #005700;
+}
+
+/* Medium → Yellow */
+.priority.Medium {
+    background: #fff3b8;
+    color: #645c00;
+}
+
+/* High → Orange */
+.priority.High {
+    background: #ffd7b8;
+    color: #7a4200;
+}
+
+/* Urgent → Red */
+.priority.Urgent,
+.priority.Critical {
+    background: #ffb8b8;
+    color: #7a0000;
+}
+
+/* ----------------------------------------------------
+   BUTTONS
+---------------------------------------------------- */
+
+.btn-details {
+    padding: 6px 10px;
+    background: #4f46e5;
+    color: #fff;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-details:hover {
+    background: #4338ca;
+}
+
+/* ----------------------------------------------------
+   PAGINATION
+---------------------------------------------------- */
+
+#pagination button {
+    background: #e5e7eb;
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+#pagination button:hover:not(:disabled) {
+    background: #d1d5db;
+}
+
+#pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ----------------------------------------------------
+   SLA COUNTDOWN COLORS
+---------------------------------------------------- */
+
+.sla-countdown {
+    font-weight: 600;
+}
+
+.sla-countdown.warning {
+    color: #d97706;
+}
+
+.sla-countdown.danger {
+    color: #b91c1c;
+}

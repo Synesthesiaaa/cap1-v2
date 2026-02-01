@@ -1,0 +1,41 @@
+{
+    "name": "isc/ticket-system",
+    "description": "Interconnect Solutions Company Ticket Management System",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "vlucas/phpdotenv": "^5.5",
+        "monolog/monolog": "^3.0",
+        "symfony/validator": "^6.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0",
+        "phpstan/phpstan": "^1.10",
+        "friendsofphp/php-cs-fixer": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/App/",
+            "Database\\": "src/Database/",
+            "Services\\": "src/Services/",
+            "Models\\": "src/Models/",
+            "Repositories\\": "src/Repositories/",
+            "Middleware\\": "src/Middleware/",
+            "Exceptions\\": "src/Exceptions/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "cs-fix": "php-cs-fixer fix",
+        "stan": "phpstan analyse"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}

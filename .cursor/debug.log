@@ -1,0 +1,10 @@
+{"location":"dashboard.php:2","message":"Page load start","data":{"t":1769950474.085938},"hypothesisId":"H3"}
+{"location":"dashboard.php:pre_navbar","message":"Before navbar include","data":{"elapsed_ms":2.7649402618408203},"hypothesisId":"H3"}
+{"location":"dashboard.php:2","message":"Page load start","data":{"t":1769950645.639551},"hypothesisId":"H3"}
+{"location":"dashboard.php:2","message":"Page load start","data":{"t":1769950646.881965},"hypothesisId":"H3"}
+{"location":"dashboard.php:pre_navbar","message":"Before navbar include","data":{"elapsed_ms":4751.227855682373},"hypothesisId":"H3"}
+{"location":"dashboard.php:pre_navbar","message":"Before navbar include","data":{"elapsed_ms":3525.7890224456787},"hypothesisId":"H3"}
+{"location":"ui-enhancements.js:showLoading","message":"showLoading called","data":{"globalModalExists":true},"timestamp":1769950692476,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"ui-enhancements.js:showLoading","message":"global modal shown","data":{"computedDisplay":"flex"},"timestamp":1769950692479,"sessionId":"debug-session","hypothesisId":"H2"}
+{"location":"dashboard.php:2","message":"Page load start","data":{"t":1769950786.623041},"hypothesisId":"H3"}
+{"location":"dashboard.php:pre_navbar","message":"Before navbar include","data":{"elapsed_ms":1.6300678253173828},"hypothesisId":"H3"}

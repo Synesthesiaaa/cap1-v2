@@ -1,0 +1,208 @@
+/* ticket_monitor.css - shared styling for internal/external monitoring pages */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss/postcss";
+
+:root {
+  --bg: #ECECEC;
+  --nav: #03294A;
+  --accent: #43A0DE;
+  --muted: #A1B2C0;
+  --secondary: #275F8E;
+  --white: #ffffff;
+}
+
+/* Top Navigation Bar */
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #03294A;
+    color: #fff;
+    padding: 10px 30px;
+    font-family: 'Inter', sans-serif;
+}
+
+.topbar .logo {
+    display: flex;
+    align-items: center;
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.topbar .logo img {
+    height: 30px;
+    margin-right: 10px;
+}
+
+.topbar .nav-links a {
+    color: #fff;
+    text-decoration: none;
+    margin-left: 20px;
+    font-size: 14px;
+    transition: color 0.2s;
+}
+
+.topbar .nav-links a:hover {
+    color: #43A0DE; 
+}
+
+/* The rest*/
+* {
+    box-sizing:border-box;
+    font-family:'Inter', sans-serif
+}
+
+body {
+    background:var(--bg);
+    margin:0;
+    color:var(--nav)
+}
+
+.monitor-wrap {
+    max-width:1200px;
+    margin:18px auto;
+    padding:20px;
+    background:var(--white);
+    border-radius:8px;
+    box-shadow:0 6px 18px rgba(2,10,25,0.06)
+}
+
+.monitor-header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px
+}
+
+.monitor-header .left {
+    display:flex;
+    flex-direction:column
+}
+
+.monitor-header h1 {
+    margin:0;
+    color:var(--nav);
+    font-size:20px
+}
+
+.tabs {
+    display:flex;
+    gap:8px;
+    margin-top:8px
+}
+
+.tab {
+    background:#f4f7fb;
+    border:1px solid #e6eef6;
+    padding:8px 12px;
+    border-radius:6px;
+    cursor:pointer;
+    color:var(--nav)
+}
+
+.tab.active {
+    background:var(--accent);
+    color:#fff
+}
+
+.filters {
+    display:flex;
+    gap:8px;
+    align-items:center
+}
+
+.filters input, .filters select {
+    padding:8px;
+    border-radius:6px;
+    border:1px solid var(--muted);
+    min-width:140px
+}
+
+/* summary cards */
+.summary-cards {
+    display:flex;
+    gap:12px;
+    margin:16px 0 24px
+}
+
+.card {
+    flex:1;
+    background:#f8fbff;
+    border-radius:8px;
+    padding:14px;
+    text-align:center;
+    box-shadow:0 2px 6px rgba(0,0,0,0.03)
+}
+
+.card-num {
+    font-size:22px;
+    font-weight:700;color:var(--nav)
+}
+
+.card-label{font-size:12px;color:var(--secondary)}
+
+/* table */
+.table-area{overflow:auto}
+.tickets-table{width:100%;border-collapse:collapse}
+.tickets-table th{background:var(--nav);color:#fff;padding:10px;text-align:left;font-weight:600}
+.tickets-table td{padding:10px;border-bottom:1px solid #e9eef2}
+.tickets-table .priority.low{color:green}
+.tickets-table .priority.medium{color:orange}
+.tickets-table .priority.high{color:#d9534f}
+.tickets-table .priority.urgent{color:#c40000}
+.status.assigning{background:#f0f6fa;padding:4px 8px;border-radius:6px;color:var(--muted)}
+.status.pending{background:#fff3cd;padding:4px 8px;border-radius:6px;color:#856404}
+.status.followup{background:#f8d7da;padding:4px 8px;border-radius:6px;color:#721c24}
+.status.complete{background:#d4edda;padding:4px 8px;border-radius:6px;color:#155724}
+.btn-details{background:transparent;border:0;color:var(--secondary);cursor:pointer;text-decoration:underline}
+
+/* pagination */
+.pagination{display:flex;gap:8px;justify-content:center;margin:12px 0}
+.pagination button{padding:6px 10px;border-radius:6px;border:1px solid #e6eef6;background:#fff;cursor:pointer}
+
+/* Drop down*/
+/* Initially hide the dropdown */
+.dropdown-list {
+  display: none;
+  position: absolute;
+  background-color: white;
+  border: 1px solid #ccc;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  z-index: 10;
+}
+
+.dropdown-list.visible {
+  display: block; /* Show the dropdown */
+}
+
+/* Style for the chevron */
+.chevron {
+  cursor: pointer;
+  padding-left: 5px;
+  font-size: 16px;
+}
+
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+/* Option list items styling */
+.dropdown-list li {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.dropdown-list li:hover {
+  background-color: #f1f1f1;
+}
+
+p.ticketinfo-label {
+    font-size: 14px;
+    color: #555;
+    font-weight: 500;
+    margin-bottom: 2px;
+}
