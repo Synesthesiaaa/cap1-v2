@@ -173,6 +173,16 @@ class CustomerSearchAPI extends BaseAPI {
         return $r && $r->num_rows > 0;
     }
 
+    /** True if tbl_user has notes column (from migration). */
+    private function hasNotesColumn() {
+        static $has = null;
+        if ($has === null) {
+            $r = @$this->conn->query("SHOW COLUMNS FROM tbl_user LIKE 'notes'");
+            $has = $r && $r->num_rows > 0;
+        }
+        return $has;
+    }
+
     /** Fast count using summary table. */
     private function getTotalCountFromSummary($search, $userType, $slaStatus, $activityStatus) {
         $countCacheKey = md5(serialize([
@@ -270,16 +280,19 @@ class CustomerSearchAPI extends BaseAPI {
         $params[] = $offset;
         $params[] = $limit;
         $types .= 'ii';
+        $notesSel = $this->hasNotesColumn() ? ", u.notes" : ", NULL AS notes";
+        $notesGrp = $this->hasNotesColumn() ? ", u.notes" : "";
         $baseQuery = "
             SELECT u.user_id, u.name, u.email, u.user_type, u.status, u.company, u.created_at, d.department_name,
                 COALESCE(s.ticket_count,0) AS ticket_count, s.last_contact,
                 COALESCE(s.success_rate,0) AS success_rate, COALESCE(s.sla_status,'On Track') AS sla_status,
                 COALESCE(s.success_rate,0) AS csat_score, s.current_ticket_status
+                {$notesSel}
             FROM tbl_user u
             LEFT JOIN tbl_user_ticket_summary s ON u.user_id = s.user_id
             LEFT JOIN tbl_department d ON u.department_id = d.department_id
             {$userTypeWhere}{$whereClause}
-            GROUP BY u.user_id, s.ticket_count, s.last_contact, s.success_rate, s.sla_status, s.current_ticket_status
+            GROUP BY u.user_id, s.ticket_count, s.last_contact, s.success_rate, s.sla_status, s.current_ticket_status{$notesGrp}
             {$havingClause}
             ORDER BY
                 CASE WHEN s.current_ticket_status = 'followup' THEN 1 WHEN s.current_ticket_status = 'pending' THEN 2
@@ -352,6 +365,8 @@ class CustomerSearchAPI extends BaseAPI {
         $offset = ($page - 1) * $limit;
 
         // Use derived table for latest ticket status per user (one pass) instead of 50k correlated subqueries
+        $notesSel = $this->hasNotesColumn() ? ", u.notes" : ", NULL AS notes";
+        $notesGrp = $this->hasNotesColumn() ? ", u.notes" : "";
         $baseQuery = "
             SELECT
                 u.user_id, u.name, u.email, u.user_type, u.status, u.company,
@@ -365,6 +380,8 @@ class CustomerSearchAPI extends BaseAPI {
                 CASE
                     WHEN SUM(CASE WHEN t.sla_date < CURDATE() AND t.status != 'complete' THEN 1 ELSE 0 END) > 0
                     THEN 'At Risk'
+                    WHEN SUM(CASE WHEN t.sla_date >= CURDATE() AND t.sla_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY) AND t.status != 'complete' THEN 1 ELSE 0 END) > 0
+                    THEN 'Approaching'
                     ELSE 'On Track'
                 END as sla_status,
                 ROUND(
@@ -372,6 +389,7 @@ class CustomerSearchAPI extends BaseAPI {
                     1
                 ) as csat_score,
                 latest.current_ticket_status
+                {$notesSel}
             FROM tbl_user u
             LEFT JOIN (
                 SELECT user_id, status AS current_ticket_status
@@ -385,7 +403,7 @@ class CustomerSearchAPI extends BaseAPI {
             LEFT JOIN tbl_ticket t ON u.user_id = t.user_id
             {$userTypeWhere}
             {$whereClause}
-            GROUP BY u.user_id, latest.current_ticket_status
+            GROUP BY u.user_id, latest.current_ticket_status{$notesGrp}
             {$havingClause}
             ORDER BY
                 CASE

@@ -1,8 +1,4 @@
 <?php
-// #region agent log
-$GLOBALS['_perf_start'] = microtime(true);
-file_put_contents(__DIR__.'/../.cursor/debug.log', json_encode(['location'=>'dashboard.php:2','message'=>'Page load start','data'=>['t'=>microtime(true)],'hypothesisId'=>'H3'])."\n", FILE_APPEND);
-// #endregion
 session_start();
 if (!isset($_SESSION['id'])) {
     header("Location: login.php");
@@ -14,26 +10,14 @@ $user_role = $_SESSION['role'] ?? '';
 $user_id = $_SESSION['id'];
 $user_name = $_SESSION['name'] ?? 'User';
 
-// For evaluators, continue with evaluator dashboard
-if ($user_role === 'evaluator') {
-    $evaluator_id = $user_id;
-    $evaluator_name = $user_name;
-    $show_evaluator_dashboard = true;
-} else {
-    $show_evaluator_dashboard = false;
-}
-
 // Pending tasks layout:
-// - Evaluator & Technician: 3 cards → 3 columns on large screens
+// - Technician: 3 cards → 3 columns on large screens
 // - Department Head (and others with this section): 2 cards → 2 columns on large screens
-if (in_array($user_role, ['evaluator', 'technician'])) {
+if ($user_role === 'technician') {
     $pendingGridClasses = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3';
 } else {
     $pendingGridClasses = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2';
 }
-// #region agent log
-file_put_contents(__DIR__.'/../.cursor/debug.log', json_encode(['location'=>'dashboard.php:pre_navbar','message'=>'Before navbar include','data'=>['elapsed_ms'=>(microtime(true)-$GLOBALS['_perf_start'])*1000],'hypothesisId'=>'H3'])."\n", FILE_APPEND);
-// #endregion
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -75,14 +59,10 @@ file_put_contents(__DIR__.'/../.cursor/debug.log', json_encode(['location'=>'das
         <!-- Welcome Header -->
         <div class="mb-8">
             <h1 class="text-3xl font-bold text-gray-900 mb-2">Welcome back, <?php echo htmlspecialchars($user_name); ?>!</h1>
-            <?php if ($show_evaluator_dashboard): ?>
-                <p class="text-gray-600">Monitor ticket statuses, manage evaluations, and stay on top of your workflow.</p>
-            <?php else: ?>
-                <p class="text-gray-600">Welcome to the Interconnect Solutions Company ticketing system.</p>
-            <?php endif; ?>
+            <p class="text-gray-600">Welcome to the Interconnect Solutions Company ticketing system.</p>
         </div>
 
-        <?php if (in_array($user_role, ['evaluator','technician','department_head'])): ?>
+        <?php if (in_array($user_role, ['technician','department_head'])): ?>
         <!-- Alerts Section -->
         <div class="mb-8">
             <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
@@ -118,72 +98,6 @@ file_put_contents(__DIR__.'/../.cursor/debug.log', json_encode(['location'=>'das
             <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
                 <span class="mr-2">⚡</span>Quick Actions
             </h2>
-            <?php if ($show_evaluator_dashboard): ?>
-
-
-            <!-- Customer Quick Actions for Evaluators -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mb-8">
-                <a href="../views/create_ticket.php" class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow border border-gray-200">
-                    <div class="text-center">
-                        <div class="text-blue-500 text-4xl mb-3">📝</div>
-                        <h3 class="font-semibold text-gray-900">Create New Ticket</h3>
-                        <p class="text-sm text-gray-600 mt-2">Submit a new support request</p>
-                    </div>
-                </a>
-                <a href="../views/user_ticket_monitor.php" class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow border border-gray-200">
-                    <div class="text-center">
-                        <div class="text-green-500 text-4xl mb-3">📋</div>
-                        <h3 class="font-semibold text-gray-900">My Tickets</h3>
-                        <p class="text-sm text-gray-600 mt-2">View and track your tickets</p>
-                    </div>
-                </a>
-                <a href="../views/evaluator_monitor.php" class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow border border-gray-200">
-                    <div class="text-center">
-                        <div class="text-blue-500 text-4xl mb-3">🎫</div>
-                        <h3 class="font-semibold text-gray-900">Evaluate Tickets</h3>
-                        <p class="text-sm text-gray-600 mt-2">Review and assign pending tickets</p>
-                    </div>
-                </a>
-            </div>
-
-            <!-- Dashboard Stats for Evaluators -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="bg-green-50 border border-green-200 p-6 rounded-lg">
-                    <div class="flex items-center">
-                        <div class="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center mr-4">
-                            <span class="text-white font-semibold">✓</span>
-                        </div>
-                        <div>
-                            <h3 class="font-semibold text-gray-900">Quick Support</h3>
-                            <p class="text-sm text-gray-600">Get help within hours</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="bg-blue-50 border border-blue-200 p-6 rounded-lg">
-                    <div class="flex items-center">
-                        <div class="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center mr-4">
-                            <span class="text-white font-semibold">24</span>
-                        </div>
-                        <div>
-                            <h3 class="font-semibold text-gray-900">24/7 Support</h3>
-                            <p class="text-sm text-gray-600">Round-the-clock assistance</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="bg-purple-50 border border-purple-200 p-6 rounded-lg">
-                    <div class="flex items-center">
-                        <div class="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center mr-4">
-                            <span class="text-white font-semibold">★</span>
-                        </div>
-                        <div>
-                            <h3 class="font-semibold text-gray-900">Expert Team</h3>
-                            <p class="text-sm text-gray-600">Certified technical professionals</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <?php else: ?>
-            <!-- Customer Quick Actions -->
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-6">
                 <a href="../views/create_ticket.php" class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow border border-gray-200">
                     <div class="text-center">
@@ -208,7 +122,7 @@ file_put_contents(__DIR__.'/../.cursor/debug.log', json_encode(['location'=>'das
                 </a> -->
             </div>
 
-            <!-- Dashboard Stats for Customers -->
+            <!-- Dashboard Stats -->
             <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div class="bg-green-50 border border-green-200 p-6 rounded-lg">
                     <div class="flex items-center">
@@ -244,7 +158,6 @@ file_put_contents(__DIR__.'/../.cursor/debug.log', json_encode(['location'=>'das
                     </div>
                 </div>
             </div>
-            <?php endif; ?>
         </div>
     </div>
 
@@ -269,9 +182,9 @@ file_put_contents(__DIR__.'/../.cursor/debug.log', json_encode(['location'=>'das
         let alertsData = [];
         let pendingTasksData = [];
         const userRole = "<?php echo htmlspecialchars($user_role, ENT_QUOTES); ?>";
-        const hasRoleDashboard = ['evaluator','technician','department_head'].includes(userRole);
+        const hasRoleDashboard = ['technician','department_head'].includes(userRole);
 
-        // Load alerts and pending tasks on page load (for evaluator, technician, department_head)
+        // Load alerts and pending tasks on page load (for technician, department_head)
         document.addEventListener('DOMContentLoaded', function() {
             if (hasRoleDashboard) {
                 loadAlerts();
@@ -285,11 +198,7 @@ file_put_contents(__DIR__.'/../.cursor/debug.log', json_encode(['location'=>'das
             const container = document.getElementById('alertsContainer');
             if (!container) return;
             
-            const baseUrl = (userRole === 'evaluator')
-                ? '../php/evaluator_api.php'
-                : '../php/role_dashboard_api.php';
-
-            fetch(baseUrl + '?action=get_alerts')
+            fetch('../php/role_dashboard_api.php?action=get_alerts')
                 .then(response => {
                     if (!response.ok) {
                         return response.json().then(err => {
@@ -320,11 +229,7 @@ file_put_contents(__DIR__.'/../.cursor/debug.log', json_encode(['location'=>'das
             const container = document.getElementById('pendingTasksContainer');
             if (!container) return;
             
-            const baseUrl = (userRole === 'evaluator')
-                ? '../php/evaluator_api.php'
-                : '../php/role_dashboard_api.php';
-
-            fetch(baseUrl + '?action=get_dashboard_stats')
+            fetch('../php/role_dashboard_api.php?action=get_dashboard_stats')
                 .then(response => {
                     if (!response.ok) {
                         return response.json().then(err => {
@@ -392,7 +297,7 @@ file_put_contents(__DIR__.'/../.cursor/debug.log', json_encode(['location'=>'das
                         <div class="ml-3">
                             <h3 class="text-sm font-medium">${alert.title}</h3>
                             <p class="text-sm mt-1">${alert.message}</p>
-                            <p class="text-xs mt-2">${alert.count} items • Click for details</p>
+                            <p class="text-xs mt-2">${alert.count ?? 0} items • Click for details</p>
                         </div>
                     </div>
                 `;
@@ -406,7 +311,7 @@ file_put_contents(__DIR__.'/../.cursor/debug.log', json_encode(['location'=>'das
             const container = document.getElementById('pendingTasksContainer');
 
             // Determine correct monitor page based on role
-            let monitorBase = 'evaluator_monitor.php';
+            let monitorBase = 'user_ticket_monitor.php';
             if (userRole === 'technician') {
                 monitorBase = 'tech_ticket_monitor.php';
             } else if (userRole === 'department_head') {
@@ -433,8 +338,8 @@ file_put_contents(__DIR__.'/../.cursor/debug.log', json_encode(['location'=>'das
                 }
             ];
 
-            // Evaluators and technicians see the escalation queue card
-            if (userRole === 'evaluator' || userRole === 'technician') {
+            // Technicians see the escalation queue card
+            if (userRole === 'technician') {
                 tasks.push({
                     title: 'Escalation Queue',
                     count: pendingTasksData.escalated_tickets || 0,
@@ -514,7 +419,7 @@ file_put_contents(__DIR__.'/../.cursor/debug.log', json_encode(['location'=>'das
             });
         }
 
-        // Refresh tasks button (for evaluator, technician, department_head)
+        // Refresh tasks button (for technician, department_head)
         const refreshBtn = document.getElementById('refreshTasksBtn');
         if (refreshBtn && hasRoleDashboard) {
             refreshBtn.addEventListener('click', function() {

@@ -59,14 +59,14 @@ try {
     $stmtDept->close();
     say("Seeded " . count($departments) . " departments.");
 
-    // ----- 3. Seed users (internal: admin, evaluator, department_head; external) -----
+    // ----- 3. Seed users (internal: admin, department_head, user; external) -----
     $defaultPassword = password_hash('Sample123', PASSWORD_DEFAULT);
     $users = [
         ['internal', $deptIds['IT'], 'Admin User', 'ACME Corp', 'admin@sample.com', $defaultPassword, 'active', 'admin', '+1-555-001'],
-        ['internal', $deptIds['IT'], 'Evaluator One', null, 'evaluator@sample.com', $defaultPassword, 'active', 'evaluator', null],
+        ['internal', $deptIds['IT'], 'IT Staff', null, 'itstaff@sample.com', $defaultPassword, 'active', 'user', null],
         ['internal', $deptIds['IT'], 'Dept Head IT', null, 'depthead.it@sample.com', $defaultPassword, 'active', 'department_head', null],
         ['internal', $deptIds['Finance'], 'Dept Head Finance', null, 'depthead.fin@sample.com', $defaultPassword, 'active', 'department_head', null],
-        ['internal', $deptIds['HR'], 'HR Staff', null, 'hr@sample.com', $defaultPassword, 'active', 'evaluator', null],
+        ['internal', $deptIds['HR'], 'HR Staff', null, 'hr@sample.com', $defaultPassword, 'active', 'user', null],
         ['external', $deptIds['Customer'], 'Alice Customer', 'Alice Co', 'alice@customer.com', $defaultPassword, 'active', 'user', '+1-555-101'],
         ['external', $deptIds['Customer'], 'Bob Customer', 'Bob Inc', 'bob@customer.com', $defaultPassword, 'active', 'user', '+1-555-102'],
         ['external', $deptIds['Customer'], 'Carol External', 'Carol Ltd', 'carol@customer.com', $defaultPassword, 'active', 'user', null],

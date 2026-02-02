@@ -44,8 +44,6 @@ $(document).ready(function() {
 
     // Function to load customers with support for both SLA and Activity filters and pagination
     function loadCustomers(query = '', userType = 'all', slaStatus = 'all', activityStatus = 'all', page = 1) {
-        console.log('Loading customers with query:', query, 'userType:', userType, 'slaStatus:', slaStatus, 'activityStatus:', activityStatus, 'page:', page);
-
         $.ajax({
             url: '../php/search_customers.php',
             type: 'GET',
@@ -59,7 +57,6 @@ $(document).ready(function() {
             },
             dataType: 'json',
             success: function(data) {
-                console.log('Customers loaded successfully:', data);
                 allCustomers = data.customers;
                 currentPagination = data.pagination;
 
@@ -191,21 +188,23 @@ $(document).ready(function() {
         profileName.text(customer.name || 'N/A');
         profileType.text(ucFirst(customer.user_type || 'external') + ' Customer');
         profileEmail.text(customer.email || 'N/A');
+        profilePhone.text(customer.phone || 'N/A');
 
-        // SLA Status - use real SLA status from database
+        // SLA Status - from database (ticket-based: On Track, Approaching, At Risk)
         const slaStatus = customer.sla_status || 'On Track';
         profileSLA.text(slaStatus);
-        // Set color based on SLA status
-        profileSLA.removeClass('text-green-600 text-red-600').addClass(
+        profileSLA.removeClass('text-green-600 text-amber-600 text-red-600').addClass(
             slaStatus === 'On Track' ? 'text-green-600' :
-            slaStatus === 'At Risk' ? 'text-red-600' : ''
+            slaStatus === 'Approaching' ? 'text-amber-600' :
+            slaStatus === 'At Risk' ? 'text-red-600' : 'text-gray-600'
         );
 
-        // CSAT Score - use real CSAT score from database, convert to 5-point scale
-        const csatScore = customer.csat_score ? (customer.csat_score / 20).toFixed(1) : '0.0';
+        // CSAT Score - from database (success_rate 0-100 as proxy, displayed as 0-5 scale)
+        const csatVal = parseFloat(customer.csat_score) || 0;
+        const csatScore = (csatVal / 20).toFixed(1);
         profileCSAT.html(`${csatScore}<span class="text-gray-500 text-sm">/5.0</span>`);
 
-        // Assigned Staff - show department name or placeholder
+        // Assigned Department - from tbl_user.department_id -> tbl_department
         profileStaff.text(customer.department_name || 'Unassigned');
 
         // Staff avatar
@@ -213,8 +212,8 @@ $(document).ready(function() {
         const staffAvatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${staffSeed}`;
         $('#staffAvatar').attr('src', staffAvatarUrl);
 
-        // Product history - fetch real data from API
-        fetch(`../php/get_customer_products.php?user_id=${customer.user_id}`)
+        // Product History - fetch from database (tbl_customer_product + tbl_ticket_product)
+        fetch(`../php/get_customer_products.php?user_id=${encodeURIComponent(customer.user_id)}`)
             .then(response => response.json())
             .then(data => {
                 if (data.success && data.products && data.products.length > 0) {
@@ -222,13 +221,13 @@ $(document).ready(function() {
                     data.products.forEach(product => {
                         const productName = product.product_name || 'Unknown Product';
                         const purchaseDate = product.purchase_date ? new Date(product.purchase_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'N/A';
-                        const warrantyEnd = product.warranty_end ? new Date(product.warranty_end).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'N/A';
+                        const warrantyEnd = product.warranty_end ? new Date(product.warranty_end).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : (product.warranty_start ? 'See details' : 'N/A');
                         const status = product.status || 'active';
                         const statusClass = status === 'warranty_expired' ? 'text-red-600' : status === 'active' ? 'text-green-600' : 'text-gray-600';
-                        
+                        const sourceLabel = product.source === 'ticket' ? ' <span class="text-xs text-gray-400">(from ticket)</span>' : '';
                         productsHtml += `
                             <div class="bg-gray-50 p-3 rounded-lg border">
-                                <p class="font-medium text-gray-800">${escapeHtml(productName)}</p>
+                                <p class="font-medium text-gray-800">${escapeHtml(productName)}${sourceLabel}</p>
                                 <p class="text-xs text-gray-500">Purchased: ${purchaseDate} | Warranty: ${warrantyEnd}</p>
                                 ${product.model ? `<p class="text-xs text-gray-400">Model: ${escapeHtml(product.model)}</p>` : ''}
                                 <p class="text-xs ${statusClass}">Status: ${status}</p>
@@ -245,13 +244,18 @@ $(document).ready(function() {
                 profileProducts.html('<div class="bg-gray-50 p-3 rounded-lg border text-sm text-gray-500">Error loading products.</div>');
             });
 
-        // Notes - show company and other info
-        const notes = [];
-        if (customer.company) notes.push(`Company: ${customer.company}`);
-        if (customer.ticket_count > 0) notes.push(`Total tickets: ${customer.ticket_count}`);
-        if (customer.success_rate) notes.push(`Success rate: ${customer.success_rate}%`);
-        notes.push(`Joined: ${new Date(customer.created_at).toLocaleDateString()}`);
-        profileNotes.text(notes.join('. '));
+        // Notes - from database (tbl_user.notes) with fallback to summary info
+        if (customer.notes && String(customer.notes).trim()) {
+            profileNotes.text(customer.notes);
+        } else {
+            const notes = [];
+            if (customer.company) notes.push('Company: ' + customer.company);
+            if (customer.ticket_count > 0) notes.push('Total tickets: ' + customer.ticket_count);
+            if (customer.success_rate) notes.push('Success rate: ' + customer.success_rate + '%');
+            notes.push('Joined: ' + (customer.created_at ? new Date(customer.created_at).toLocaleDateString() : 'N/A'));
+            profileNotes.text(notes.join('. '));
+        }
+        profileNotes.attr('data-user-id', customer.user_id);
 
         // Enable View Ticket button always (per user request)
         const viewTicketBtn = $('#viewTicketBtn');
@@ -267,7 +271,7 @@ $(document).ready(function() {
 
     // Function to reset profile
     function resetProfile() {
-        profileAvatar.text('NA');
+        profileAvatar.attr('src', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Default');
         profileName.text('Select a customer');
         profileType.text('N/A');
         profileEmail.text('N/A');
@@ -509,8 +513,6 @@ $(document).ready(function() {
 
     // Function to load filter options from database, with search context
     function loadFilterOptions(searchQuery = '', userType = 'all') {
-        console.log('Loading filter options from database with context:', { searchQuery, userType });
-
         $.ajax({
             url: '../php/get_filter_options.php',
             type: 'GET',
@@ -521,8 +523,6 @@ $(document).ready(function() {
             },
             dataType: 'json',
             success: function(data) {
-                console.log('Filter options loaded successfully:', data);
-
                 // Populate user types
                 if (data.user_types) {
                     populateSelect($('#filterUser'), data.user_types);
@@ -540,8 +540,6 @@ $(document).ready(function() {
             },
             error: function(xhr, status, error) {
                 console.error('Error loading filter options:', error);
-                // Fallback: use static options if database fails
-                console.log('Using fallback static filter options');
             }
         });
     }
@@ -562,6 +560,27 @@ $(document).ready(function() {
         }
     }
 
-    // Load all customers initially - ensure we show ALL users (including admins/evaluators)
+    // Save notes on blur (when user edits and leaves the field)
+    profileNotes.on('blur', function() {
+        const uid = $(this).attr('data-user-id');
+        if (!uid || $(this).attr('contenteditable') === 'false') return;
+        const notes = $(this).text().trim();
+        $.ajax({
+            url: '../php/save_customer_notes.php',
+            type: 'POST',
+            data: { user_id: uid, notes: notes },
+            dataType: 'json',
+            success: function(res) {
+                if (res.success) {
+                    if (typeof window.showToast === 'function') window.showToast('Notes saved.');
+                } else if (res.error) {
+                    console.warn('Notes save:', res.error);
+                }
+            },
+            error: function() { console.warn('Notes save failed'); }
+        });
+    });
+
+    // Load all customers initially - ensure we show ALL users (including admins)
     loadCustomers('', 'all', 'all', 'all', 1);
 });

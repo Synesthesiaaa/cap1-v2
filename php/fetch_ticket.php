@@ -80,26 +80,17 @@ switch ($table) {
         }
         break;
 
-    case 2: // tickets for evaluator or department head
-    
-        $user_id = $_SESSION['id'];
-        $role = $_SESSION['role'];
-
-        $where[] = "(t.evaluator_id = ? OR t.type = ?)";
-        $values[] = $user_id;  $types .= "i";
-        $values[] = $dept_name;  $types .= "s";
+    case 2: // tickets for department head (to-do queue by department)
+        $role = $_SESSION['role'] ?? '';
 
         if ($role === 'department_head') {
-        // Department heads see ALL tickets that match their department name
+            // Department heads see tickets that match their department type
             $where[] = "t.type = ?";
             $values[] = $dept_name;
             $types .= "s";
-        }
-
-        if ($role === 'evaluator') {
-            $where[] = "t.evaluator_id = ?";
-            $values[] = $user_id;
-            $types .= "i";
+        } else {
+            // Fallback: no tickets for non-department-head (table 2)
+            $where[] = "1 = 0";
         }
 
     // Apply needing filter: exclude completed tickets (unless status filter is set)
@@ -182,15 +173,15 @@ while ($row = $result->fetch_assoc()) {
 }
 $stmt->close();
 
+$dept_id_need = intval($_SESSION['department_id'] ?? 0);
 $sql_need = "
     SELECT COUNT(*) AS need
-    FROM tbl_ticket
-    WHERE 
-        (evaluator_id = ? OR user_id IN (SELECT user_id FROM tbl_user WHERE department_id = ?))
-        AND status != 'complete'
+    FROM tbl_ticket t
+    WHERE t.user_id IN (SELECT user_id FROM tbl_user WHERE department_id = ?)
+        AND t.status != 'complete'
 ";
 $stmt = $conn->prepare($sql_need);
-$stmt->bind_param("ii", $user_id, $_SESSION['department_id']);
+$stmt->bind_param("i", $dept_id_need);
 
 $stmt->execute();
 $need_res = $stmt->get_result()->fetch_assoc();

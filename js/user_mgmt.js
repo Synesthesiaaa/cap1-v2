@@ -91,9 +91,9 @@
                             <td class="py-3 px-4 align-middle"><span class="text-xs px-2 py-0.5 rounded-full bg-slate-100">${escapeHtml(u.user_role)}</span></td>
                             <td class="py-3 px-4 align-middle"><span class="text-xs px-2 py-0.5 rounded-full ${u.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${escapeHtml(u.status)}</span></td>
                             <td class="py-3 px-4 text-right align-middle">
-                                <div class="flex items-center justify-end gap-3">
-                                    <button class="edit-user text-indigo-600 hover:underline text-sm whitespace-nowrap" data-id="${u.user_id}">Edit</button>
-                                    ${u.status === 'active' ? `<button class="delete-user text-red-600 hover:underline text-sm whitespace-nowrap" data-id="${u.user_id}">Deactivate</button>` : ''}
+                                <div class="flex items-center justify-end gap-2 flex-nowrap">
+                                    <button type="button" class="edit-user px-3 py-1.5 rounded text-indigo-600 hover:bg-indigo-50 text-sm font-medium shrink-0" data-id="${u.user_id}">Edit</button>
+                                    ${u.status === 'active' ? `<button type="button" class="delete-user px-3 py-1.5 rounded text-red-600 hover:bg-red-50 text-sm font-medium shrink-0" data-id="${u.user_id}">Deactivate</button>` : ''}
                                 </div>
                             </td>
                         </tr>

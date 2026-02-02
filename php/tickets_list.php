@@ -3,10 +3,10 @@ header('Content-Type: application/json');
 session_start();
 require_once 'db.php';
 
-// For technicians: id is technician_id; for evaluators/admins use technician_id if set
+// For technicians: id is technician_id; for admins use technician_id if set
 $tech_id = $_SESSION['technician_id'] ?? $_SESSION['id'] ?? 0;
-// Allow roles that can access ticket list (evaluator, technician, admin, department_head for customer management)
-if (!isset($_SESSION['id']) || !in_array($_SESSION['role'], ['evaluator', 'technician', 'admin', 'department_head'])) {
+// Allow roles that can access ticket list (technician, admin, department_head for customer management)
+if (!isset($_SESSION['id']) || !in_array($_SESSION['role'], ['technician', 'admin', 'department_head'])) {
     echo json_encode(["error" => "Unauthorized"]);
     exit;
 }

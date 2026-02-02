@@ -169,22 +169,29 @@
             
             // Close on escape key
             document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape' && modal.classList.contains('show')) {
+                if (e.key === 'Escape' && isModalVisible(modal)) {
                     closeModal(modal);
                 }
             });
         });
     }
 
+    function isModalVisible(modal) {
+        if (!modal) return false;
+        return modal.classList.contains('show') || !modal.classList.contains('hidden');
+    }
+
     function openModal(modal) {
         if (!modal) return;
         modal.classList.add('show');
+        modal.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
     }
 
     function closeModal(modal) {
         if (!modal) return;
         modal.classList.remove('show');
+        modal.classList.add('hidden');
         document.body.style.overflow = '';
     }
 

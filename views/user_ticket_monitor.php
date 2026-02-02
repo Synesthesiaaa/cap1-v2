@@ -245,7 +245,7 @@ $created_ref = $_GET['ref'] ?? '';
           <h2 id="stat-total">0</h2>
           <div class="stat-card-label">Total Tickets</div>
         </div>
-        <?php if (!$user_type !== 'external'): ?>
+        <?php if ($user_type !== 'external'): ?>
         <div class="stat-card" id="stat-card-needing" data-filter="needing">
           <h2 id="stat-needing">0</h2>
           <div class="stat-card-label">Needing My Input</div>

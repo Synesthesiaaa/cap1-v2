@@ -5,20 +5,14 @@ function toggleSidebar() {
 
     sidebar.classList.toggle('open');
     backdrop.classList.toggle('show');
-
-    // Close sidebar when clicking on backdrop
-    if (backdrop.classList.contains('show')) {
-        backdrop.addEventListener('click', closeSidebar);
-    }
 }
 
 function closeSidebar() {
     const sidebar = document.getElementById('sidebar');
     const backdrop = document.querySelector('.sidebar-backdrop');
 
-    sidebar.classList.remove('open');
-    backdrop.classList.remove('show');
-    backdrop.removeEventListener('click', closeSidebar);
+    if (sidebar) sidebar.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('show');
 }
 
 function createBackdrop() {
@@ -38,8 +32,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Close sidebar only when clicking on backdrop (not on navbar links)
     const backdrop = document.querySelector('.sidebar-backdrop');
     if (backdrop) {
-        backdrop.addEventListener('click', function() {
-            closeSidebar();
-        });
+        backdrop.addEventListener('click', closeSidebar);
     }
 });

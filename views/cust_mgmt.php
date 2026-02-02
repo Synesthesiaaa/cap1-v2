@@ -499,7 +499,7 @@ $total_customers = $result->fetch_assoc()['total'];
           <!-- Notes -->
           <div>
             <h4 class="text-sm font-semibold text-gray-700 mb-2">Notes</h4>
-            <div id="profileNotes" class="bg-gray-50 p-3 rounded-lg border text-sm text-gray-600 editable" contenteditable="<?php echo $isReadOnly ? 'false' : 'false'; ?>">
+            <div id="profileNotes" class="bg-gray-50 p-3 rounded-lg border text-sm text-gray-600 editable" contenteditable="<?php echo $isReadOnly ? 'false' : 'true'; ?>">
               N/A
             </div>
           </div>

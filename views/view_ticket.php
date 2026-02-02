@@ -139,7 +139,7 @@ $sla_text = $sla_date->format("F j, Y");
                 <div class="flex flex-col mt-4">
                   <textarea id="replyText" placeholder="Type your response..." rows="3" class="w-full border rounded px-3 py-2 resize-none" style="min-height: 60px;"></textarea>
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mt-2 gap-2">
-                      <input type="file"id="replyAttachment" name="reply_attachment" class="text-sm text-gray-600"/>
+                      <input type="file" id="replyAttachment" name="reply_attachment" class="text-sm text-gray-600"/>
                       <button id="send-reply-button" class="bg-blue-900 text-white px-4 py-2 rounded w-full sm:w-auto">Send Reply</button>
                     </div>
                 </div>
@@ -171,7 +171,7 @@ $sla_text = $sla_date->format("F j, Y");
                 <!-- Actions based on user role -->
                 <?php if ($user_role !== 'user' && !in_array(strtolower($ticket['status']), ['complete', 'resolved'])): ?>
                  <div class="mt-4 flex flex-col sm:flex-row gap-2">
-                  <?php if ($user_role === 'evaluator' || $user_role === 'admin'): ?>
+                  <?php if ($user_role === 'admin'): ?>
                   <button id="edit-ticket-btn"
                     class="bg-blue-900 hover:bg-blue-600 text-white px-4 py-2 rounded-lg w-full sm:w-auto">
                     Edit Ticket

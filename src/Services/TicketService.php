@@ -37,7 +37,7 @@ class TicketService
             $type = $data['type'] ?? $data['ticket_type'] ?? '';
             $userType = $data['user_type'] ?? 'internal';
 
-            // SLA Weight: compute priority and auto-assign (bypasses evaluator)
+            // SLA Weight: compute priority and auto-assign
             if (!isset($data['priority']) && $category && $type) {
                 $slaResult = $this->computeSlaPriority($category, $type, $userType, $data);
                 if ($slaResult) {
@@ -250,7 +250,7 @@ class TicketService
     }
 
     /**
-     * Compute priority from SLA Weight table (bypasses evaluator, auto-assigns)
+     * Compute priority from SLA Weight table (auto-assigns)
      */
     private function computeSlaPriority(string $category, string $type, string $userType, array $ticketData): ?array
     {

@@ -4,6 +4,10 @@
  * Fetches dynamic values based on search context for user types, SLA statuses, and activity statuses
  */
 
+// Prevent PHP notices/warnings from breaking JSON response
+@ini_set('display_errors', '0');
+ob_start();
+
 require_once 'db.php';
 
 /**
@@ -14,26 +18,37 @@ class FilterOptionsAPI extends BaseAPI {
     public function handleRequest() {
         header('Content-Type: application/json; charset=utf-8');
 
-        // Get search parameters to filter options contextually
-        $search      = $this->sanitizeInput($_GET['q'] ?? '');
-        $userType    = $this->sanitizeInput($_GET['user_type'] ?? 'all');
-        $filterType  = $this->sanitizeInput($_GET['type'] ?? 'all');
+        try {
+            // Get search parameters to filter options contextually
+            $search      = $this->sanitizeInput($_GET['q'] ?? '');
+            $userType    = $this->sanitizeInput($_GET['user_type'] ?? 'all');
+            $filterType  = $this->sanitizeInput($_GET['type'] ?? 'all');
 
-        $response = [];
+            $response = [];
 
-        if ($filterType === 'all' || $filterType === 'user_types') {
-            $response['user_types'] = $this->getUserTypes($search, $userType);
+            if ($filterType === 'all' || $filterType === 'user_types') {
+                $response['user_types'] = $this->getUserTypes($search, $userType);
+            }
+
+            if ($filterType === 'all' || $filterType === 'sla_statuses') {
+                $response['sla_statuses'] = $this->getSLAStatuses($search, $userType);
+            }
+
+            if ($filterType === 'all' || $filterType === 'activity_statuses') {
+                $response['activity_statuses'] = $this->getActivityStatuses($search, $userType);
+            }
+
+            if (ob_get_level()) ob_end_clean();
+            $this->sendResponse($response);
+        } catch (Throwable $e) {
+            error_log('get_filter_options error: ' . $e->getMessage());
+            if (ob_get_level()) ob_end_clean();
+            $this->sendResponse([
+                'user_types' => [['value' => 'all', 'label' => 'All Users']],
+                'sla_statuses' => [['value' => 'all', 'label' => 'All SLA Status']],
+                'activity_statuses' => [['value' => 'all', 'label' => 'All Activity']]
+            ]);
         }
-
-        if ($filterType === 'all' || $filterType === 'sla_statuses') {
-            $response['sla_statuses'] = $this->getSLAStatuses($search, $userType);
-        }
-
-        if ($filterType === 'all' || $filterType === 'activity_statuses') {
-            $response['activity_statuses'] = $this->getActivityStatuses($search, $userType);
-        }
-
-        $this->sendResponse($response);
     }
 
     /**
@@ -181,9 +196,14 @@ class FilterOptionsAPI extends BaseAPI {
             ";
 
             $stmt = $this->conn->prepare($query);
+            if (!$stmt) continue;
+            if (!empty($baseConditions['params'])) {
+                $stmt->bind_param($baseConditions['types'], ...$baseConditions['params']);
+            }
             $stmt->execute();
             $result = $stmt->get_result();
-            $count = $result->fetch_assoc()['count'];
+            $row = $result ? $result->fetch_assoc() : null;
+            $count = $row ? (int)($row['count'] ?? 0) : 0;
             $stmt->close();
 
             // Always include all SLA options, even if count is 0 (for filter selection)
@@ -244,9 +264,14 @@ class FilterOptionsAPI extends BaseAPI {
             ";
 
             $stmt = $this->conn->prepare($query);
+            if (!$stmt) continue;
+            if (!empty($baseConditions['params'])) {
+                $stmt->bind_param($baseConditions['types'], ...$baseConditions['params']);
+            }
             $stmt->execute();
             $result = $stmt->get_result();
-            $count = $result->fetch_assoc()['count'];
+            $row = $result ? $result->fetch_assoc() : null;
+            $count = $row ? (int)($row['count'] ?? 0) : 0;
             $stmt->close();
 
             // Only add if there are matching customers (except for 'all' which is always shown)

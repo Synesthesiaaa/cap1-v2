@@ -2,7 +2,7 @@
 include("db.php");
 
 try {
-    // Include current active ticket load so evaluators can see how busy each technician is
+    // Include current active ticket load so department heads can see how busy each technician is
     $sql = "SELECT technician_id, name, specialization, active_tickets 
             FROM tbl_technician 
             WHERE status = 'active' 

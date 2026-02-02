@@ -37,7 +37,11 @@ FROM tbl_user u
 LEFT JOIN (
     SELECT user_id, COUNT(*) AS ticket_count, MAX(created_at) AS last_contact,
         ROUND((SUM(CASE WHEN status = 'complete' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)) * 100, 1) AS success_rate,
-        CASE WHEN SUM(CASE WHEN sla_date < CURDATE() AND status != 'complete' THEN 1 ELSE 0 END) > 0 THEN 'At Risk' ELSE 'On Track' END AS sla_status,
+        CASE
+            WHEN SUM(CASE WHEN sla_date < CURDATE() AND status != 'complete' THEN 1 ELSE 0 END) > 0 THEN 'At Risk'
+            WHEN SUM(CASE WHEN sla_date >= CURDATE() AND sla_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY) AND status != 'complete' THEN 1 ELSE 0 END) > 0 THEN 'Approaching'
+            ELSE 'On Track'
+        END AS sla_status,
         SUM(CASE WHEN priority IN ('urgent','high') THEN 1 ELSE 0 END) AS urgent_high_count
     FROM tbl_ticket
     GROUP BY user_id
