@@ -44,9 +44,14 @@ $(document).ready(function() {
 
     // Function to load customers with support for both SLA and Activity filters and pagination
     function loadCustomers(query = '', userType = 'all', slaStatus = 'all', activityStatus = 'all', page = 1) {
+        // #region agent log
+        fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'customer_search.js:46',message:'loadCustomers entry',data:{query,userType,slaStatus,activityStatus,page},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        const requestStartTime = Date.now();
         $.ajax({
             url: '../php/search_customers.php',
             type: 'GET',
+            timeout: 120000, // Increased to 120 seconds to handle slow queries when summary table is missing
             data: {
                 q: query,
                 user_type: userType,
@@ -57,6 +62,10 @@ $(document).ready(function() {
             },
             dataType: 'json',
             success: function(data) {
+                // #region agent log
+                const requestTime = Date.now() - requestStartTime;
+                fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'customer_search.js:59',message:'AJAX success',data:{customersCount:data.customers?.length||0,totalCount:data.pagination?.total_count||0,requestTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+                // #endregion
                 allCustomers = data.customers;
                 currentPagination = data.pagination;
 
@@ -91,6 +100,10 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr, status, error) {
+                // #region agent log
+                const requestTime = Date.now() - requestStartTime;
+                fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'customer_search.js:93',message:'AJAX error',data:{status,error,requestTime,statusCode:xhr.status,responseText:xhr.responseText?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+                // #endregion
                 console.error('Error loading customers:', {
                     xhr: xhr,
                     status: status,
@@ -107,7 +120,18 @@ $(document).ready(function() {
                 });
                 allCustomers = [];
                 currentPagination = null;
+                
+                // Show user-friendly error message
+                let errorMsg = 'Unable to load customers. ';
+                if (status === 'timeout') {
+                    errorMsg += 'The request is taking longer than expected. This may be due to a large dataset. ';
+                    errorMsg += 'Please ensure the summary table (tbl_user_ticket_summary) exists by running: php archive/migrations/add_user_ticket_summary.php';
+                } else {
+                    errorMsg += 'Please try again or contact support if the issue persists.';
+                }
+                
                 renderCustomers([]);
+                customerList.html('<div class="p-4 text-center text-red-600">' + errorMsg + '</div>');
                 resetProfile();
                 $('#totalCount').text('0');
             }

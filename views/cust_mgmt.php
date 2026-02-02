@@ -621,7 +621,7 @@ $total_customers = $result->fetch_assoc()['total'];
   </script>
 
   <!-- Load customer search JS -->
-  <script src="../js/customer_search.js"></script>
+  <script src="../js/customer_search.js?v=2"></script>
   
   <!-- Additional UI enhancements -->
   <script>

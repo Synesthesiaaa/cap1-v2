@@ -5,6 +5,11 @@
  * Enhanced performance with caching, modular filters, and optimized queries
  */
 
+// Suppress error output to prevent HTML from breaking JSON response
+@ini_set('display_errors', '0');
+error_reporting(E_ALL & ~E_WARNING & ~E_NOTICE);
+ob_start();
+
 require_once 'db.php';
 
 /**
@@ -14,7 +19,41 @@ class CustomerSearchAPI extends BaseAPI {
     private const CACHE_TTL = 300; // 5 minutes
 
     public function handleRequest() {
+        // #region agent log
+        $logFile = __DIR__ . '/../.cursor/debug.log';
+        $logEntry = json_encode([
+            'id' => 'log_' . time() . '_' . uniqid(),
+            'timestamp' => round(microtime(true) * 1000),
+            'location' => 'search_customers.php:16',
+            'message' => 'handleRequest entry',
+            'data' => [
+                'memory_before' => memory_get_usage(true),
+                'memory_peak_before' => memory_get_peak_usage(true),
+                'max_execution_time' => ini_get('max_execution_time'),
+                'memory_limit' => ini_get('memory_limit')
+            ],
+            'sessionId' => 'debug-session',
+            'runId' => 'run1',
+            'hypothesisId' => 'A'
+        ]) . "\n";
+        @file_put_contents($logFile, $logEntry, FILE_APPEND);
+        // #endregion
+        
+        // Increase execution time limit for large datasets
+        set_time_limit(180); // 3 minutes
+        ini_set('max_execution_time', '180');
+        
+        // Clear any existing output buffers to prevent "headers already sent" errors
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        
+        // Start fresh output buffer
+        ob_start();
+        
         header('Content-Type: application/json; charset=utf-8');
+        // Send a keep-alive header to prevent connection timeout
+        header('Connection: keep-alive');
 
         // Get and sanitize input
         $search   = $this->sanitizeInput($_GET['q'] ?? '');
@@ -36,7 +75,21 @@ class CustomerSearchAPI extends BaseAPI {
         ]));
 
         // Use summary table for fast list/count when available (avoids joining 500k tickets)
+        $startTime = microtime(true);
         $useSummary = $this->useSummary();
+        // #region agent log
+        $logEntry = json_encode([
+            'id' => 'log_' . time() . '_' . uniqid(),
+            'timestamp' => round(microtime(true) * 1000),
+            'location' => 'search_customers.php:39',
+            'message' => 'Summary table check',
+            'data' => ['useSummary' => $useSummary],
+            'sessionId' => 'debug-session',
+            'runId' => 'run1',
+            'hypothesisId' => 'E'
+        ]) . "\n";
+        @file_put_contents($logFile, $logEntry, FILE_APPEND);
+        // #endregion
         if ($useSummary) {
             $totalCount = $this->getTotalCountFromSummary($search, $userType, $slaStatus, $activityStatus);
             $query = $this->buildQueryFromSummary($search, $userType, $slaStatus, $activityStatus, $page, $limit);
@@ -44,8 +97,46 @@ class CustomerSearchAPI extends BaseAPI {
             $totalCount = $this->getTotalCount($search, $userType, $slaStatus, $activityStatus);
             $query = $this->buildQuery($search, $userType, $slaStatus, $activityStatus, $page, $limit);
         }
+        $countTime = microtime(true) - $startTime;
+        // #region agent log
+        $logEntry = json_encode([
+            'id' => 'log_' . time() . '_' . uniqid(),
+            'timestamp' => round(microtime(true) * 1000),
+            'location' => 'search_customers.php:48',
+            'message' => 'After count query',
+            'data' => [
+                'totalCount' => $totalCount,
+                'countTime' => round($countTime, 3),
+                'memory_after_count' => memory_get_usage(true)
+            ],
+            'sessionId' => 'debug-session',
+            'runId' => 'run1',
+            'hypothesisId' => 'A'
+        ]) . "\n";
+        @file_put_contents($logFile, $logEntry, FILE_APPEND);
+        // #endregion
 
+        $queryStartTime = microtime(true);
         $customers = $this->executeQuery($query);
+        $queryTime = microtime(true) - $queryStartTime;
+        // #region agent log
+        $logEntry = json_encode([
+            'id' => 'log_' . time() . '_' . uniqid(),
+            'timestamp' => round(microtime(true) * 1000),
+            'location' => 'search_customers.php:48',
+            'message' => 'After executeQuery',
+            'data' => [
+                'customersCount' => count($customers),
+                'queryTime' => round($queryTime, 3),
+                'memory_after_query' => memory_get_usage(true),
+                'memory_peak_after_query' => memory_get_peak_usage(true)
+            ],
+            'sessionId' => 'debug-session',
+            'runId' => 'run1',
+            'hypothesisId' => 'A'
+        ]) . "\n";
+        @file_put_contents($logFile, $logEntry, FILE_APPEND);
+        // #endregion
 
         // Add pagination info to response
         $response = [
@@ -58,6 +149,30 @@ class CustomerSearchAPI extends BaseAPI {
             ]
         ];
 
+        // #region agent log
+        $totalTime = microtime(true) - $startTime;
+        $logEntry = json_encode([
+            'id' => 'log_' . time() . '_' . uniqid(),
+            'timestamp' => round(microtime(true) * 1000),
+            'location' => 'search_customers.php:61',
+            'message' => 'Before sendResponse',
+            'data' => [
+                'totalTime' => round($totalTime, 3),
+                'responseCustomersCount' => count($customers),
+                'responseTotalCount' => $totalCount,
+                'memory_final' => memory_get_usage(true),
+                'memory_peak_final' => memory_get_peak_usage(true)
+            ],
+            'sessionId' => 'debug-session',
+            'runId' => 'run1',
+            'hypothesisId' => 'A'
+        ]) . "\n";
+        @file_put_contents($logFile, $logEntry, FILE_APPEND);
+        // #endregion
+
+        // Clean output buffer and send response
+        ob_end_clean();
+        
         $this->sendResponse($response);
     }
 
@@ -169,6 +284,39 @@ class CustomerSearchAPI extends BaseAPI {
 
     /** True if tbl_user_ticket_summary exists and has rows (fast path). */
     private function useSummary() {
+        $r = @$this->conn->query("SELECT 1 FROM tbl_user_ticket_summary LIMIT 1");
+        if ($r && $r->num_rows > 0) {
+            return true;
+        }
+        
+        // If table doesn't exist or is empty, try to create it (one-time setup)
+        // This helps with the 500k+ records issue
+        $tableExists = @$this->conn->query("SHOW TABLES LIKE 'tbl_user_ticket_summary'");
+        if (!$tableExists || $tableExists->num_rows === 0) {
+            // Create the summary table structure
+            $createTable = "CREATE TABLE IF NOT EXISTS tbl_user_ticket_summary (
+                user_id INT(11) NOT NULL PRIMARY KEY,
+                ticket_count INT(11) NOT NULL DEFAULT 0,
+                last_contact DATETIME NULL,
+                success_rate DECIMAL(5,2) NULL,
+                sla_status VARCHAR(20) NULL,
+                current_ticket_status VARCHAR(20) NULL,
+                urgent_high_count INT(11) NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_ticket_count (ticket_count),
+                INDEX idx_sla_status (sla_status),
+                INDEX idx_current_status (current_ticket_status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            @$this->conn->query($createTable);
+        } else {
+            // Check if urgent_high_count column exists, add it if missing
+            $colCheck = @$this->conn->query("SHOW COLUMNS FROM tbl_user_ticket_summary LIKE 'urgent_high_count'");
+            if (!$colCheck || $colCheck->num_rows === 0) {
+                @$this->conn->query("ALTER TABLE tbl_user_ticket_summary ADD COLUMN urgent_high_count INT(11) NOT NULL DEFAULT 0");
+            }
+        }
+        
+        // Check again after potential creation
         $r = @$this->conn->query("SELECT 1 FROM tbl_user_ticket_summary LIMIT 1");
         return $r && $r->num_rows > 0;
     }
@@ -504,9 +652,40 @@ class CustomerSearchAPI extends BaseAPI {
     }
 
     private function executeQuery($queryData) {
+        // #region agent log
+        $logFile = __DIR__ . '/../.cursor/debug.log';
+        $logEntry = json_encode([
+            'id' => 'log_' . time() . '_' . uniqid(),
+            'timestamp' => round(microtime(true) * 1000),
+            'location' => 'search_customers.php:506',
+            'message' => 'executeQuery entry',
+            'data' => [
+                'queryLength' => strlen($queryData['query']),
+                'paramsCount' => count($queryData['params'] ?? []),
+                'memory_before' => memory_get_usage(true)
+            ],
+            'sessionId' => 'debug-session',
+            'runId' => 'run1',
+            'hypothesisId' => 'A'
+        ]) . "\n";
+        @file_put_contents($logFile, $logEntry, FILE_APPEND);
+        // #endregion
         try {
             $stmt = $this->conn->prepare($queryData['query']);
             if (!$stmt) {
+                // #region agent log
+                $logEntry = json_encode([
+                    'id' => 'log_' . time() . '_' . uniqid(),
+                    'timestamp' => round(microtime(true) * 1000),
+                    'location' => 'search_customers.php:510',
+                    'message' => 'Prepare failed',
+                    'data' => ['error' => $this->conn->error, 'errno' => $this->conn->errno],
+                    'sessionId' => 'debug-session',
+                    'runId' => 'run1',
+                    'hypothesisId' => 'D'
+                ]) . "\n";
+                @file_put_contents($logFile, $logEntry, FILE_APPEND);
+                // #endregion
                 throw new Exception("Prepare failed: " . $this->conn->error);
             }
 
@@ -514,11 +693,49 @@ class CustomerSearchAPI extends BaseAPI {
                 $stmt->bind_param($queryData['types'], ...$queryData['params']);
             }
 
-            $stmt->execute();
+            $executeStart = microtime(true);
+            $executeResult = $stmt->execute();
+            $executeTime = microtime(true) - $executeStart;
+            // #region agent log
+            $logEntry = json_encode([
+                'id' => 'log_' . time() . '_' . uniqid(),
+                'timestamp' => round(microtime(true) * 1000),
+                'location' => 'search_customers.php:517',
+                'message' => 'After execute',
+                'data' => [
+                    'executeResult' => $executeResult,
+                    'executeTime' => round($executeTime, 3),
+                    'stmtError' => $stmt->error ?? null
+                ],
+                'sessionId' => 'debug-session',
+                'runId' => 'run1',
+                'hypothesisId' => 'A'
+            ]) . "\n";
+            @file_put_contents($logFile, $logEntry, FILE_APPEND);
+            // #endregion
+            if (!$executeResult) {
+                // #region agent log
+                $logEntry = json_encode([
+                    'id' => 'log_' . time() . '_' . uniqid(),
+                    'timestamp' => round(microtime(true) * 1000),
+                    'location' => 'search_customers.php:520',
+                    'message' => 'Execute failed',
+                    'data' => ['error' => $stmt->error, 'errno' => $stmt->errno],
+                    'sessionId' => 'debug-session',
+                    'runId' => 'run1',
+                    'hypothesisId' => 'D'
+                ]) . "\n";
+                @file_put_contents($logFile, $logEntry, FILE_APPEND);
+                // #endregion
+                throw new Exception("Execute failed: " . $stmt->error);
+            }
             $result = $stmt->get_result();
 
             $customers = [];
+            $rowCount = 0;
+            $fetchStart = microtime(true);
             while ($row = $result->fetch_assoc()) {
+                $rowCount++;
                 // Format data
                 $row['ticket_count'] = (int)$row['ticket_count'];
                 $row['success_rate'] = $row['success_rate'] ? round(floatval($row['success_rate']), 1) : 0.0;
@@ -532,12 +749,68 @@ class CustomerSearchAPI extends BaseAPI {
                 }
 
                 $customers[] = $row;
+                // #region agent log
+                if ($rowCount === 1 || $rowCount % 10 === 0) {
+                    $logEntry = json_encode([
+                        'id' => 'log_' . time() . '_' . uniqid(),
+                        'timestamp' => round(microtime(true) * 1000),
+                        'location' => 'search_customers.php:521',
+                        'message' => 'Fetching rows',
+                        'data' => [
+                            'rowCount' => $rowCount,
+                            'memory_current' => memory_get_usage(true),
+                            'memory_peak' => memory_get_peak_usage(true)
+                        ],
+                        'sessionId' => 'debug-session',
+                        'runId' => 'run1',
+                        'hypothesisId' => 'B'
+                    ]) . "\n";
+                    @file_put_contents($logFile, $logEntry, FILE_APPEND);
+                }
+                // #endregion
             }
+            $fetchTime = microtime(true) - $fetchStart;
+            // #region agent log
+            $logEntry = json_encode([
+                'id' => 'log_' . time() . '_' . uniqid(),
+                'timestamp' => round(microtime(true) * 1000),
+                'location' => 'search_customers.php:537',
+                'message' => 'After fetch loop',
+                'data' => [
+                    'totalRows' => $rowCount,
+                    'fetchTime' => round($fetchTime, 3),
+                    'memory_final' => memory_get_usage(true),
+                    'memory_peak_final' => memory_get_peak_usage(true)
+                ],
+                'sessionId' => 'debug-session',
+                'runId' => 'run1',
+                'hypothesisId' => 'A'
+            ]) . "\n";
+            @file_put_contents($logFile, $logEntry, FILE_APPEND);
+            // #endregion
 
             $stmt->close();
             return $customers;
 
         } catch (Exception $e) {
+            // #region agent log
+            $logEntry = json_encode([
+                'id' => 'log_' . time() . '_' . uniqid(),
+                'timestamp' => round(microtime(true) * 1000),
+                'location' => 'search_customers.php:540',
+                'message' => 'Exception caught',
+                'data' => [
+                    'error' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'memory' => memory_get_usage(true)
+                ],
+                'sessionId' => 'debug-session',
+                'runId' => 'run1',
+                'hypothesisId' => 'D'
+            ]) . "\n";
+            @file_put_contents($logFile, $logEntry, FILE_APPEND);
+            // #endregion
             error_log("Customer search error: " . $e->getMessage());
             return [];
         }

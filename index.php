@@ -5,6 +5,6 @@
 		$uri = 'http://';
 	}
 	$uri .= $_SERVER['HTTP_HOST'];
-	header('Location: '.$uri.'/capstone/dev-env/views/login.php');
+	header('Location: '.$uri.'/cap1-v2/views/login.php');
 	exit;
 ?>
