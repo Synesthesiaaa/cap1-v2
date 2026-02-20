@@ -24,6 +24,27 @@ if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
 }
 
 try {
+    // #region agent log
+    $logFile = __DIR__ . '/../.cursor/debug.log';
+    $logEntry = json_encode([
+        'id' => 'log_' . time() . '_' . uniqid(),
+        'timestamp' => round(microtime(true) * 1000),
+        'location' => 'post_reply.php:26',
+        'message' => 'post_reply entry',
+        'data' => [
+            'hasSession' => isset($_SESSION['id']),
+            'sessionId' => $_SESSION['id'] ?? null,
+            'ref' => $_POST['ref'] ?? '',
+            'hasReply' => !empty(trim($_POST['reply'] ?? '')),
+            'hasAttachment' => !empty($_FILES['replyAttachment'] ?? null)
+        ],
+        'sessionId' => 'debug-session',
+        'runId' => 'run1',
+        'hypothesisId' => 'D'
+    ]) . "\n";
+    @file_put_contents($logFile, $logEntry, FILE_APPEND);
+    // #endregion
+    
     if (!isset($_SESSION['id'])) {
         json_error("Unauthorized - please log in");
     }
@@ -45,6 +66,24 @@ try {
         try {
             $ticketRepository = new \Repositories\TicketRepository();
             $ticket = $ticketRepository->findByReference($ref);
+            
+            // #region agent log
+            $logEntry = json_encode([
+                'id' => 'log_' . time() . '_' . uniqid(),
+                'timestamp' => round(microtime(true) * 1000),
+                'location' => 'post_reply.php:47',
+                'message' => 'Ticket lookup (new structure)',
+                'data' => [
+                    'ref' => $ref,
+                    'ticketFound' => !!$ticket,
+                    'ticketId' => $ticket['ticket_id'] ?? null
+                ],
+                'sessionId' => 'debug-session',
+                'runId' => 'run1',
+                'hypothesisId' => 'D'
+            ]) . "\n";
+            @file_put_contents($logFile, $logEntry, FILE_APPEND);
+            // #endregion
             
             if (!$ticket) {
                 json_error("Ticket not found");
@@ -122,12 +161,43 @@ try {
         include("db.php");
 
         // Get ticket ID
+        // #region agent log
+        $logEntry = json_encode([
+            'id' => 'log_' . time() . '_' . uniqid(),
+            'timestamp' => round(microtime(true) * 1000),
+            'location' => 'post_reply.php:125',
+            'message' => 'Ticket lookup (old structure)',
+            'data' => ['ref' => $ref],
+            'sessionId' => 'debug-session',
+            'runId' => 'run1',
+            'hypothesisId' => 'D'
+        ]) . "\n";
+        @file_put_contents($logFile, $logEntry, FILE_APPEND);
+        // #endregion
         $stmt = $conn->prepare("SELECT ticket_id FROM tbl_ticket WHERE reference_id = ?");
         $stmt->bind_param("s", $ref);
         $stmt->execute();
         $res = $stmt->get_result();
         $ticket = $res->fetch_assoc();
         $stmt->close();
+        
+        // #region agent log
+        $logEntry = json_encode([
+            'id' => 'log_' . time() . '_' . uniqid(),
+            'timestamp' => round(microtime(true) * 1000),
+            'location' => 'post_reply.php:132',
+            'message' => 'Ticket lookup result',
+            'data' => [
+                'ticketFound' => !!$ticket,
+                'ticketId' => $ticket['ticket_id'] ?? null,
+                'dbError' => $conn->error ?? null
+            ],
+            'sessionId' => 'debug-session',
+            'runId' => 'run1',
+            'hypothesisId' => 'D'
+        ]) . "\n";
+        @file_put_contents($logFile, $logEntry, FILE_APPEND);
+        // #endregion
 
         if (!$ticket) {
             json_error("Ticket not found");
@@ -138,7 +208,7 @@ try {
         $replier_id = $_SESSION['id'];
 
         // Prepare attachment path
-        $db_attachment_path = null;
+        $db_attachment_path = '';
         if ($attachment_path) {
             $db_attachment_path = str_replace('../', '', $attachment_path);
         }
@@ -148,7 +218,67 @@ try {
             INSERT INTO tbl_ticket_reply (ticket_id, replied_by, replier_id, reply_text, attachment_path, created_at)
             VALUES (?, ?, ?, ?, ?, NOW())
         ");
-        $insert->bind_param("isiss", $ticket_id, $replied_by, $replier_id, $reply, $db_attachment_path);
+        // #region agent log
+        $logEntry = json_encode([
+            'id' => 'log_' . time() . '_' . uniqid(),
+            'timestamp' => round(microtime(true) * 1000),
+            'location' => 'post_reply.php:221',
+            'message' => 'Before bind_param',
+            'data' => [
+                'typeString' => 'isiss',
+                'typeStringLength' => 5,
+                'params' => [
+                    'ticket_id' => $ticket_id,
+                    'replied_by' => $replied_by,
+                    'replier_id' => $replier_id,
+                    'reply' => substr($reply, 0, 50) . (strlen($reply) > 50 ? '...' : ''),
+                    'db_attachment_path' => $db_attachment_path
+                ],
+                'paramsCount' => 5,
+                'attachmentPathIsNull' => is_null($db_attachment_path)
+            ],
+            'sessionId' => 'debug-session',
+            'runId' => 'run1',
+            'hypothesisId' => 'F'
+        ]) . "\n";
+        @file_put_contents($logFile, $logEntry, FILE_APPEND);
+        // #endregion
+        if (!$insert) {
+            // #region agent log
+            $logEntry = json_encode([
+                'id' => 'log_' . time() . '_' . uniqid(),
+                'timestamp' => round(microtime(true) * 1000),
+                'location' => 'post_reply.php:221',
+                'message' => 'Prepare failed',
+                'data' => ['error' => $conn->error],
+                'sessionId' => 'debug-session',
+                'runId' => 'run1',
+                'hypothesisId' => 'F'
+            ]) . "\n";
+            @file_put_contents($logFile, $logEntry, FILE_APPEND);
+            // #endregion
+            json_error("Prepare failed: " . $conn->error);
+        }
+        $bindResult = $insert->bind_param("isiss", $ticket_id, $replied_by, $replier_id, $reply, $db_attachment_path);
+        // #region agent log
+        $logEntry = json_encode([
+            'id' => 'log_' . time() . '_' . uniqid(),
+            'timestamp' => round(microtime(true) * 1000),
+            'location' => 'post_reply.php:221',
+            'message' => 'After bind_param',
+            'data' => [
+                'bindResult' => $bindResult,
+                'stmtError' => $insert->error ?? null
+            ],
+            'sessionId' => 'debug-session',
+            'runId' => 'run1',
+            'hypothesisId' => 'F'
+        ]) . "\n";
+        @file_put_contents($logFile, $logEntry, FILE_APPEND);
+        // #endregion
+        if (!$bindResult) {
+            json_error("Error: " . $insert->error);
+        }
         $ok = $insert->execute();
         $insert->close();
 

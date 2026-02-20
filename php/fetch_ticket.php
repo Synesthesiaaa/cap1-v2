@@ -80,7 +80,7 @@ switch ($table) {
         }
         break;
 
-    case 2: // tickets for department head (to-do queue by department)
+    case 2: // to-do queue: department head by department, admin sees all
         $role = $_SESSION['role'] ?? '';
 
         if ($role === 'department_head') {
@@ -88,18 +88,20 @@ switch ($table) {
             $where[] = "t.type = ?";
             $values[] = $dept_name;
             $types .= "s";
+        } else if ($role === 'admin') {
+            // Admin sees all tickets regardless of department
+            // no extra where clause
         } else {
-            // Fallback: no tickets for non-department-head (table 2)
             $where[] = "1 = 0";
         }
 
-    // Apply needing filter: exclude completed tickets (unless status filter is set)
-    if ($needing_filter && $status === "") {
-        $where[] = "t.status != 'complete'";
-    } else if (!$needing_filter && $status === "") {
-        // Default: exclude completed for table 2 unless status is explicitly set
-        $where[] = "t.status != 'complete'";
-    }
+        // Apply needing filter: exclude completed tickets (unless status filter is set)
+        if ($needing_filter && $status === "") {
+            $where[] = "t.status != 'complete'";
+        } else if (!$needing_filter && $status === "") {
+            // Default: exclude completed for table 2 unless status is explicitly set
+            $where[] = "t.status != 'complete'";
+        }
 
         break;
 

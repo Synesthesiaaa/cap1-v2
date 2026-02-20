@@ -268,7 +268,7 @@ $replies_query = "SELECT r.*,
           </div>
 
           <!-- reply form -->
-          <form id="replyForm" class="mt-5">
+          <form id="replyForm" class="mt-5" onsubmit="return false;">
             <label class="sr-only" for="replyInput">Type your response</label>
             <textarea id="replyInput" name="reply" rows="3" placeholder="Type your response..." class="w-full resize-none border border-gray-200 rounded-md p-3 text-sm focus:ring-1 focus:ring-brand-700 focus:border-brand-700"></textarea>
 
@@ -628,7 +628,11 @@ $replies_query = "SELECT r.*,
       }, 3000);
     }
 
-    replyForm.addEventListener('submit', (e) => {
+    if (replyForm) {
+      replyForm.addEventListener('submit', (e) => {
+      // #region agent log
+      fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:632',message:'Reply form submit event',data:{ticketRef,url:window.location.href,hasRef:!!ticketRef},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       e.preventDefault();
       const text = replyInput.value.trim();
       const attachmentFile = document.getElementById('replyAttachment').files[0];
@@ -656,15 +660,27 @@ $replies_query = "SELECT r.*,
         formData.append('replyAttachment', attachmentFile);
       }
 
+      // #region agent log
+      fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:660',message:'Before fetch post_reply',data:{ticketRef,textLength:text.length,hasAttachment:!!attachmentFile},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       fetch('../php/post_reply.php', {
         method: 'POST',
         body: formData
       })
       .then(async response => {
+        // #region agent log
+        fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:664',message:'Response received',data:{status:response.status,statusText:response.statusText,ok:response.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         let data;
         try {
           data = await response.json();
+          // #region agent log
+          fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:667',message:'Response parsed',data:{ok:data?.ok,hasError:!!data?.error,error:data?.error?.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
         } catch (e) {
+          // #region agent log
+          fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:669',message:'JSON parse error',data:{error:e.message,status:response.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
           // If response.json() fails, create a fallback error object
           data = {
             ok: false,
@@ -680,6 +696,9 @@ $replies_query = "SELECT r.*,
       })
       .then(data => {
         console.log('Reply response:', data);
+        // #region agent log
+        fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:682',message:'Success handler',data:{ok:data?.ok,hasReply:!!data?.reply,currentUrl:window.location.href},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         if (data.ok && data.reply) {
           // Clear the input
           replyInput.value = '';
@@ -699,6 +718,9 @@ $replies_query = "SELECT r.*,
         }
       })
       .catch(error => {
+        // #region agent log
+        fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:702',message:'Reply error caught',data:{error:error.message,currentUrl:window.location.href},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         console.error('Reply error:', error);
         showToast('Failed to send reply: ' + error.message, 'error');
       })
@@ -708,20 +730,29 @@ $replies_query = "SELECT r.*,
         submitBtn.disabled = false;
       });
     });
+    }
 
-    document.getElementById('cancelReply').addEventListener('click', () => {
-      replyInput.value = '';
-      document.getElementById('replyAttachment').value = '';
-      document.getElementById('fileName').classList.add('hidden');
-      document.getElementById('fileName').textContent = '';
-    });
+    const cancelReplyBtn = document.getElementById('cancelReply');
+    if (cancelReplyBtn) {
+      cancelReplyBtn.addEventListener('click', () => {
+        replyInput.value = '';
+        document.getElementById('replyAttachment').value = '';
+        document.getElementById('fileName').classList.add('hidden');
+        document.getElementById('fileName').textContent = '';
+      });
+    }
 
     // Handle file attachment
-    document.getElementById('attachFileBtn').addEventListener('click', () => {
-      document.getElementById('replyAttachment').click();
-    });
+    const attachFileBtn = document.getElementById('attachFileBtn');
+    if (attachFileBtn) {
+      attachFileBtn.addEventListener('click', () => {
+        document.getElementById('replyAttachment').click();
+      });
+    }
 
-    document.getElementById('replyAttachment').addEventListener('change', (e) => {
+    const replyAttachment = document.getElementById('replyAttachment');
+    if (replyAttachment) {
+      replyAttachment.addEventListener('change', (e) => {
       const file = e.target.files[0];
       const fileNameSpan = document.getElementById('fileName');
       if (file) {
@@ -732,8 +763,10 @@ $replies_query = "SELECT r.*,
         fileNameSpan.textContent = '';
       }
     });
+    }
 
-    escalateForm.addEventListener('submit', (e) => {
+    if (escalateForm) {
+      escalateForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const reason = document.getElementById('escalateReason').value.trim();
       const to = document.getElementById('escalateTo').value;
@@ -817,6 +850,7 @@ $replies_query = "SELECT r.*,
         submitBtn.disabled = false;
       });
     });
+    }
 
     function toggleResolve() {
       // Toggle complete/reopen via AJAX
@@ -861,12 +895,14 @@ $replies_query = "SELECT r.*,
     }
 
     // Keyboard shortcut Ctrl+Enter to send reply
-    replyInput.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        replyForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-      }
-    });
+    if (replyInput && replyForm) {
+      replyInput.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          replyForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        }
+      });
+    }
 
     // Load logs when page loads
     if (ticketRef) {

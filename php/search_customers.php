@@ -117,7 +117,33 @@ class CustomerSearchAPI extends BaseAPI {
         // #endregion
 
         $queryStartTime = microtime(true);
-        $customers = $this->executeQuery($query);
+        try {
+            $customers = $this->executeQuery($query);
+        } catch (Exception $e) {
+            // #region agent log
+            $logEntry = json_encode([
+                'id' => 'log_' . time() . '_' . uniqid(),
+                'timestamp' => round(microtime(true) * 1000),
+                'location' => 'search_customers.php:120',
+                'message' => 'executeQuery exception',
+                'data' => [
+                    'error' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine()
+                ],
+                'sessionId' => 'debug-session',
+                'runId' => 'run1',
+                'hypothesisId' => 'F'
+            ]) . "\n";
+            @file_put_contents($logFile, $logEntry, FILE_APPEND);
+            // #endregion
+            ob_end_clean();
+            $this->sendResponse([
+                'ok' => false,
+                'error' => 'Error: ' . $e->getMessage()
+            ], 500);
+            return;
+        }
         $queryTime = microtime(true) - $queryStartTime;
         // #region agent log
         $logEntry = json_encode([
@@ -367,6 +393,28 @@ class CustomerSearchAPI extends BaseAPI {
         try {
             $stmt = $this->conn->prepare($countQuery);
             if (!empty($params)) {
+                // #region agent log
+                $logFile = __DIR__ . '/../.cursor/debug.log';
+                $logEntry = json_encode([
+                    'id' => 'log_' . time() . '_' . uniqid(),
+                    'timestamp' => round(microtime(true) * 1000),
+                    'location' => 'search_customers.php:370',
+                    'message' => 'bind_param count check',
+                    'data' => [
+                        'typesLength' => strlen($types),
+                        'paramsCount' => count($params),
+                        'types' => $types,
+                        'params' => $params
+                    ],
+                    'sessionId' => 'debug-session',
+                    'runId' => 'run1',
+                    'hypothesisId' => 'F'
+                ]) . "\n";
+                @file_put_contents($logFile, $logEntry, FILE_APPEND);
+                // #endregion
+                if (strlen($types) !== count($params)) {
+                    throw new Exception("Parameter count mismatch: types length=" . strlen($types) . ", params count=" . count($params) . ", types='$types'");
+                }
                 $stmt->bind_param($types, ...$params);
             }
             $stmt->execute();
@@ -690,6 +738,28 @@ class CustomerSearchAPI extends BaseAPI {
             }
 
             if (!empty($queryData['params'])) {
+                // #region agent log
+                $logFile = __DIR__ . '/../.cursor/debug.log';
+                $logEntry = json_encode([
+                    'id' => 'log_' . time() . '_' . uniqid(),
+                    'timestamp' => round(microtime(true) * 1000),
+                    'location' => 'search_customers.php:693',
+                    'message' => 'bind_param count check',
+                    'data' => [
+                        'typesLength' => strlen($queryData['types']),
+                        'paramsCount' => count($queryData['params']),
+                        'types' => $queryData['types'],
+                        'params' => $queryData['params']
+                    ],
+                    'sessionId' => 'debug-session',
+                    'runId' => 'run1',
+                    'hypothesisId' => 'F'
+                ]) . "\n";
+                @file_put_contents($logFile, $logEntry, FILE_APPEND);
+                // #endregion
+                if (strlen($queryData['types']) !== count($queryData['params'])) {
+                    throw new Exception("Parameter count mismatch: types length=" . strlen($queryData['types']) . ", params count=" . count($queryData['params']) . ", types='{$queryData['types']}'");
+                }
                 $stmt->bind_param($queryData['types'], ...$queryData['params']);
             }
 

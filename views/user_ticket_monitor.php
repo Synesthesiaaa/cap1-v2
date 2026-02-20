@@ -5,7 +5,7 @@ if (!isset($_SESSION['id'])) {
     header("Location: login.php");
     exit();
 }
-$user_type = $_SESSION['role'];
+$user_type = $_SESSION['role'] ?? 'user';
 
 // Success notification when a ticket was just created
 $ticket_created = isset($_GET['success']) && $_GET['success'] === 'ticket_created';
@@ -15,7 +15,7 @@ $created_ref = $_GET['ref'] ?? '';
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>My Tickets</title>
+  <title>Tickets</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
 
   <!-- Base styles -->
@@ -96,41 +96,13 @@ $created_ref = $_GET['ref'] ?? '';
       flex-wrap:wrap;
     }
 
-    .stat-card {
-      flex:1;
-      min-width:220px;
-      background:#f9fafb;
-      border-radius:10px;
-      padding:14px 16px;
-      display:flex;
-      flex-direction:column;
-      justify-content:center;
-      cursor:pointer;
-      transition:background 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
+    .stat-label {
+      font-size:0.95rem;
+      color:#64748b;
     }
 
-    .stat-card:hover {
-      background:#f3f4f6;
-      transform:translateY(-2px);
-      box-shadow:0 4px 12px rgba(15, 23, 42, 0.1);
-    }
-
-    .stat-card.active {
-      background:#e0f2fe;
-      border:2px solid #0ea5e9;
-    }
-
-    .stat-card h2 {
-      margin:0;
-      font-size:1.6rem;
-      font-weight:600;
-      color:#111827;
-    }
-
-    .stat-card-label {
-      margin:4px 0 0;
-      font-size:0.85rem;
-      color:#6b7280;
+    .stat-label strong {
+      color:#0f172a;
     }
 
     .controls {
@@ -221,7 +193,7 @@ $created_ref = $_GET['ref'] ?? '';
   <div class="container my-4">
     <div class="d-flex justify-content-between align-items-baseline flex-wrap">
       <div class="mb-2">
-        <h3 class="page-header-title">My Tickets</h3>
+        <h3 class="page-header-title">Tickets</h3>
         <p class="page-header-subtitle">Track the status of your requests and view details in one place.</p>
       </div>
       <div class="text-right mb-2">
@@ -231,26 +203,14 @@ $created_ref = $_GET['ref'] ?? '';
     </div>
 
     <div class="panel">
-      <!-- buttons -->
+      <!-- tabs: Tickets (table 1 or 2 by role), Complete (table 3) -->
       <div class="table-buttons">
-        <button id="btn-table-1" class="table-btn" data-table="1">My Tickets</button>
-        <?php if ($user_type === 'department_head' || $user_type === 'admin'): ?>
-        <button id="btn-table-2" class="table-btn inactive" data-table="2">To do</button>
-        <?php endif; ?>
-        <button id="btn-table-3" class="table-btn inactive" data-table="3">Completed</button>
+        <button id="btn-table-tickets" class="table-btn" data-table="<?php echo ($user_type === 'department_head' || $user_type === 'admin') ? '2' : '1'; ?>">Tickets</button>
+        <button id="btn-table-3" class="table-btn inactive" data-table="3">Complete</button>
       </div>
 
       <div class="stats">
-        <div class="stat-card" id="stat-card-total" data-filter="all">
-          <h2 id="stat-total">0</h2>
-          <div class="stat-card-label">Total Tickets</div>
-        </div>
-        <?php if ($user_type !== 'external'): ?>
-        <div class="stat-card" id="stat-card-needing" data-filter="needing">
-          <h2 id="stat-needing">0</h2>
-          <div class="stat-card-label">Needing My Input</div>
-        </div>
-        <?php endif; ?>
+        <span class="stat-label">Total Tickets: <strong id="stat-total">0</strong></span>
       </div>
 
       <!-- controls -->
@@ -266,10 +226,10 @@ $created_ref = $_GET['ref'] ?? '';
 
         <select id="status" class="form-control" style="max-width:220px;">
           <option value="">Status (All)</option>
-          <option value="Assigning">Assigning</option>
-          <option value="Pending">Pending</option>
-          <option value="Followup">Followup</option>
-          <option value="Complete">Complete</option>
+          <option value="assigning">Assigning</option>
+          <option value="pending">Pending</option>
+          <option value="followup">Followup</option>
+          <option value="complete">Complete</option>
         </select>
 
         <select id="sort" class="form-control" style="max-width:220px;">
@@ -280,7 +240,10 @@ $created_ref = $_GET['ref'] ?? '';
         <button id="btn-refresh" class="btn btn-outline-primary">Refresh</button>
       </div>
 
-      <div class="table-responsive">
+      <div class="table-responsive position-relative">
+        <div id="tickets-loading" class="position-absolute d-none" style="top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.8);z-index:5;align-items:center;justify-content:center;display:flex;">
+          <span class="spinner-border text-primary" role="status"><span class="sr-only">Loading...</span></span>
+        </div>
         <table class="table table-hover" id="tickets-table">
           <thead>
             <tr>
@@ -316,12 +279,11 @@ $created_ref = $_GET['ref'] ?? '';
     let currentTable = 1;
     let currentPage = 1;
     const pageSize = 10;
-    let activeStatFilter = 'all'; // 'all' or 'needing'
 
     function setActiveButton(table) {
-      currentTable = table;
+      currentTable = parseInt(table, 10);
       $('.table-btn').addClass('inactive');
-      $(`#btn-table-${table}`).removeClass('inactive');
+      $('.table-btn[data-table="' + currentTable + '"]').removeClass('inactive');
     }
 
     function renderStatusBadge(status) {
@@ -365,17 +327,12 @@ $created_ref = $_GET['ref'] ?? '';
 
     function fetchTickets() {
       const q = $('#search').val().trim();
-      let status = $('#status').val();
+      const status = $('#status').val();
       const priority = $('#priority').val();
       const sort = $('#sort').val();
       const page = currentPage;
 
-      // Apply stat filter: if "needing" is active, filter out completed tickets
-      if (activeStatFilter === 'needing' && !status) {
-        // Don't override if user has explicitly selected a status
-        // The backend will handle the needing filter logic
-      }
-
+      $('#tickets-loading').removeClass('d-none').css('display', 'flex');
       $.ajax({
         url: '../php/fetch_ticket.php',
         method: 'GET',
@@ -388,15 +345,12 @@ $created_ref = $_GET['ref'] ?? '';
           sort: sort,
           page: page,
           page_size: pageSize,
-          needing_filter: activeStatFilter === 'needing' ? 1 : 0
+          needing_filter: 0
         },
         success: function(resp) {
           if (resp.success) {
-            // update stats
             $('#stat-total').text(resp.total_count);
-            $('#stat-needing').text(resp.needing_count);
 
-            // render rows
             const tbody = $('#tickets-body');
             const detailsPage = (currentTable === 2)
               ? "view_ticket.php"
@@ -409,9 +363,10 @@ $created_ref = $_GET['ref'] ?? '';
               resp.data.forEach(r => {
                 const badge = renderStatusBadge(r.status);
                 const priorityBadge = renderPriorityBadge(r.priority);
-                const date = r.created_at;
+                const date = escapeHtml((r.created_at || '').toString());
+                const ref = escapeHtml((r.reference_id || '').toString());
                 const row = `<tr>
-                  <td>${r.reference_id}</td>
+                  <td>${ref}</td>
                   <td>${escapeHtml(r.title)}</td>
                   <td>${badge}</td>
                   <td>${priorityBadge}</td>
@@ -422,16 +377,21 @@ $created_ref = $_GET['ref'] ?? '';
               });
             }
 
-            // pagination
-            renderPagination(resp.page, resp.total_pages);
-            $('#page-info').text(`Page ${resp.page} of ${resp.total_pages}`);
+            const totalPages = Math.max(1, resp.total_pages || 1);
+            renderPagination(resp.page, totalPages);
+            $('#page-info').text(resp.total_count === 0
+              ? 'No tickets'
+              : `Page ${resp.page} of ${totalPages}`);
           } else {
-            alert('Failed to load tickets: ' + resp.message);
+            alert('Failed to load tickets: ' + (resp.message || 'Unknown error'));
           }
         },
         error: function(xhr, st, err) {
           console.error(xhr, st, err);
           alert('An error occurred while loading tickets.');
+        },
+        complete: function() {
+          $('#tickets-loading').addClass('d-none').css('display', '');
         }
       });
     }
@@ -455,48 +415,17 @@ $created_ref = $_GET['ref'] ?? '';
       ul.append(`<li class="page-item ${nextDisabled}"><a class="page-link" href="#" data-page="${current+1}">Next</a></li>`);
     }
 
-    function setActiveStatCard(filter) {
-      activeStatFilter = filter;
-      $('.stat-card').removeClass('active');
-      if (filter === 'all') {
-        $('#stat-card-total').addClass('active');
-      } else if (filter === 'needing') {
-        $('#stat-card-needing').addClass('active');
-      }
-    }
-
     // click handlers
     $(function(){
-      setActiveButton(1);
-      setActiveStatCard('all');
+      var ticketsTable = parseInt($('#btn-table-tickets').data('table'), 10);
+      setActiveButton(ticketsTable);
       fetchTickets();
 
-      // Stat card click handlers
-      $('#stat-card-total').on('click', function(){
-        setActiveStatCard('all');
-        currentPage = 1;
-        $('#status').val(''); // Clear status filter
-        fetchTickets();
-      });
-
-      $('#stat-card-needing').on('click', function(){
-        setActiveStatCard('needing');
-        currentPage = 1;
-        // Set status to show non-completed tickets
-        if (!$('#status').val()) {
-          // Only auto-set if no status is selected
-        }
-        fetchTickets();
-      });
-
       $('.table-btn').on('click', function(){
-        const table = parseInt($(this).data('table'));
+        var table = $(this).data('table');
         setActiveButton(table);
         currentPage = 1;
-        // Clear status filter if table 3 shows completed, otherwise hide completed by default
-        if (table !== 3) {
-          $('#status').val('');
-        }
+        $('#status').val('');
         fetchTickets();
       });
 
@@ -530,7 +459,8 @@ $created_ref = $_GET['ref'] ?? '';
       // Auto-hide ticket-created toast after a few seconds
       <?php if ($ticket_created): ?>
       setTimeout(function() {
-        $('#ticketCreatedToast').fadeOut(200, function() { $(this).remove(); });
+        var el = document.getElementById('ticketCreatedToast');
+        if (el) $(el).fadeOut(200, function() { $(this).remove(); });
       }, 5000);
       <?php endif; ?>
     });
