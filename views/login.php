@@ -180,6 +180,7 @@ $csrfTokenName = $csrfAvailable ? \Middleware\CsrfMiddleware::getTokenName() : '
             <?php echo htmlspecialchars($error); ?>
           </div>
         <?php endif; ?>
+        <div id="signupSuccess" class="w-full p-3 bg-green-100 border border-green-400 text-green-800 rounded-md text-sm hidden"></div>
         <?php if ($csrfAvailable && !empty($csrfToken)): ?>
           <input type="hidden" name="<?php echo htmlspecialchars($csrfTokenName); ?>" value="<?php echo htmlspecialchars($csrfToken); ?>">
         <?php endif; ?>
@@ -201,9 +202,134 @@ $csrfTokenName = $csrfAvailable ? \Middleware\CsrfMiddleware::getTokenName() : '
           Login
         </button>
       </form>
-      <!--<p class="mt-4 text-sm text-gray-500 text-center">Dont have an account ? <a href="#" class="text-blue-600 hover:text-blue-700">Sign up here</a></p> -->
+      <p class="mt-4 text-sm text-gray-500 text-center">
+        Don’t have an account?
+        <button type="button" id="openSignupModal" class="text-blue-600 hover:text-blue-700 font-medium">Sign up here</button>
+      </p>
     </div>
   </div>
 </div>
+
+<!-- Sign Up Modal -->
+<div id="signupModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-md shadow-md max-w-md w-full p-10 signup-modal-panel">
+    <div class="flex items-start justify-between mb-4">
+      <div>
+        <h2>Create Account</h2>
+        <p class="text-gray-500">Registers as Customer (External) only.</p>
+      </div>
+      <button type="button" id="closeSignupModal" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div id="signupError" class="w-full p-3 bg-red-100 border border-red-400 text-red-700 rounded-md text-sm mb-4 hidden"></div>
+
+    <form id="signupForm" class="space-y-4">
+      <?php if ($csrfAvailable && !empty($csrfToken)): ?>
+        <input type="hidden" name="<?php echo htmlspecialchars($csrfTokenName); ?>" value="<?php echo htmlspecialchars($csrfToken); ?>">
+      <?php endif; ?>
+
+      <div>
+        <label>Full name</label>
+        <input name="name" type="text" required class="login-input">
+      </div>
+      <div>
+        <label>Email</label>
+        <input name="email" type="email" required class="login-input">
+      </div>
+      <div>
+        <label>Password</label>
+        <input name="password" type="password" minlength="8" required class="login-input">
+      </div>
+      <div>
+        <label>Confirm password</label>
+        <input name="password_confirm" type="password" minlength="8" required class="login-input">
+      </div>
+      <div>
+        <label>Company (optional)</label>
+        <input name="company" type="text" class="login-input">
+      </div>
+      <div>
+        <label>Phone (optional)</label>
+        <input name="phone" type="text" class="login-input">
+      </div>
+
+      <button type="submit" id="signupSubmitBtn" class="login-submit-btn">
+        Create account
+      </button>
+    </form>
+  </div>
+</div>
+
+<script>
+(function() {
+  const modal = document.getElementById('signupModal');
+  const openBtn = document.getElementById('openSignupModal');
+  const closeBtn = document.getElementById('closeSignupModal');
+  const form = document.getElementById('signupForm');
+  const errBox = document.getElementById('signupError');
+  const successBox = document.getElementById('signupSuccess');
+  const submitBtn = document.getElementById('signupSubmitBtn');
+
+  function openModal() {
+    errBox.classList.add('hidden');
+    errBox.textContent = '';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+
+  function closeModal() {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+
+  openBtn?.addEventListener('click', openModal);
+  closeBtn?.addEventListener('click', closeModal);
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errBox.classList.add('hidden');
+    errBox.textContent = '';
+    successBox.classList.add('hidden');
+    successBox.textContent = '';
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating...';
+
+    try {
+      const fd = new FormData(form);
+      const res = await fetch('../php/register_user.php', {
+        method: 'POST',
+        body: fd
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data || data.success !== true) {
+        const msg = (data && (data.error || data.message)) ? (data.error || data.message) : ('Registration failed (' + res.status + ')');
+        errBox.textContent = msg;
+        errBox.classList.remove('hidden');
+        return;
+      }
+
+      closeModal();
+      form.reset();
+      successBox.textContent = data.message || 'Account created. Please log in.';
+      successBox.classList.remove('hidden');
+    } catch (err) {
+      errBox.textContent = 'Registration failed. Please try again.';
+      errBox.classList.remove('hidden');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create account';
+    }
+  });
+})();
+</script>
 </body>
 </html>

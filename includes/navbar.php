@@ -31,6 +31,9 @@
         <?php else: ?>
             <a href="../views/user_ticket_monitor.php">Tickets</a>
         <?php endif; ?>
+        <?php if (in_array($role, ['admin', 'department_head', 'technician'])): ?>
+            <a href="../views/reports.php">Reports</a>
+        <?php endif; ?>
         <!-- <a href="../views/settings.php">Settings</a> -->
         <!-- <a href="../views/profile.php">Profile</a> -->
         <a href="../views/logout.php">Logout</a>

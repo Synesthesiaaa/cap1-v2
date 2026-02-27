@@ -154,6 +154,89 @@ body.login-page {
   transform: translateY(-1px);
 }
 
+/* Signup modal: match login panel styles */
+.signup-modal-panel h2 {
+  color: var(--primary, #03294A);
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+}
+
+.signup-modal-panel p.text-gray-500 {
+  color: var(--muted, #6b7280);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  margin-bottom: 1.25rem;
+}
+
+.signup-modal-panel form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.signup-modal-panel form > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.signup-modal-panel label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--primary, #374151);
+  margin-bottom: 0.5rem;
+  line-height: 1.5;
+}
+
+.signup-modal-panel input[type="text"],
+.signup-modal-panel input[type="email"],
+.signup-modal-panel input[type="password"],
+.signup-modal-panel .login-input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 2px solid var(--muted, #d1d5db);
+  border-radius: var(--radius-md, 0.5rem);
+  font-size: 1rem;
+  font-family: 'Inter', sans-serif;
+  color: var(--primary, #03294A);
+  background: var(--white, #ffffff);
+  transition: all var(--transition-base, 0.3s ease);
+  box-sizing: border-box;
+}
+
+.signup-modal-panel input[type="text"]:hover,
+.signup-modal-panel input[type="email"]:hover,
+.signup-modal-panel input[type="password"]:hover,
+.signup-modal-panel .login-input:hover {
+  border-color: var(--secondary, #9ca3af);
+}
+
+.signup-modal-panel input[type="text"]:focus,
+.signup-modal-panel input[type="email"]:focus,
+.signup-modal-panel input[type="password"]:focus,
+.signup-modal-panel .login-input:focus {
+  outline: none;
+  border-color: var(--accent, #43A0DE);
+  box-shadow: 0 0 0 3px rgba(67, 160, 222, 0.1);
+  transform: translateY(-1px);
+}
+
+.signup-modal-panel .bg-red-100 {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #dc2626;
+  border-radius: var(--radius-md, 0.5rem);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+}
+
 /* Remember Me Container */
 .remember-me-container {
   display: flex;

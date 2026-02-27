@@ -58,8 +58,8 @@ try {
             if ($newStatus === 'complete') {
                 $result = $ticketService->resolve($ticket['ticket_id'], $userId, $userRole, $message);
             } else {
-                // Reopen ticket
-                $result = $ticketService->update($ticket['ticket_id'], ['status' => 'pending'], $userId, $userRole);
+                // Reopen ticket: clear resolved_at
+                $result = $ticketService->update($ticket['ticket_id'], ['status' => 'pending', 'resolved_at' => null], $userId, $userRole);
             }
             
             if ($result) {
@@ -92,8 +92,13 @@ try {
     $new_status = ($current['status'] === 'complete') ? 'pending' : 'complete';
     $message = ($new_status === 'complete') ? 'Ticket has been completed.' : 'Ticket has been reopened.';
 
-    $update = $conn->prepare("UPDATE tbl_ticket SET status = ? WHERE reference_id = ?");
-    $update->bind_param("ss", $new_status, $ref);
+    if ($new_status === 'complete') {
+        $update = $conn->prepare("UPDATE tbl_ticket SET status = ?, resolved_at = NOW() WHERE reference_id = ?");
+        $update->bind_param("ss", $new_status, $ref);
+    } else {
+        $update = $conn->prepare("UPDATE tbl_ticket SET status = ?, resolved_at = NULL WHERE reference_id = ?");
+        $update->bind_param("ss", $new_status, $ref);
+    }
     $success = $update->execute();
     $update->close();
 
@@ -139,15 +144,10 @@ try {
         }
 
         json_response(['ok' => true, 'status' => $new_status, 'message' => $message]);
-    } else {
-        json_response(['ok' => false, 'error' => 'Failed to update ticket'], 500);
-    }
-
-    $conn->close();
-
-} catch (Exception $e) {
-    json_response(['ok' => false, 'error' => 'Exception: ' . $e->getMessage()], 500);
-} catch (Throwable $t) {
-    json_response(['ok' => false, 'error' => 'Error: ' . $t->getMessage()], 500);
-}
-?>
+        if (isset($conn) && $conn instanceof mysqli) {
+            $conn->close();
+        }
+        if (isset($conn) && $conn instanceof mysqli) {
+            $conn->close();
+        }
+        exit();
