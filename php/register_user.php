@@ -39,7 +39,7 @@ if ($csrfAvailable && !\Middleware\CsrfMiddleware::validateToken()) {
 }
 
 $name = trim($_POST['name'] ?? '');
-$email = trim($_POST['email'] ?? '');
+$email = strtolower(trim($_POST['email'] ?? ''));
 $password = (string)($_POST['password'] ?? '');
 $passwordConfirm = (string)($_POST['password_confirm'] ?? '');
 $company = trim($_POST['company'] ?? '');
@@ -64,18 +64,31 @@ $userType = 'external';
 $userRole = 'customer';
 $status = 'active';
 
-// Uniqueness: check tbl_user
-$check = $conn->prepare("SELECT user_id FROM tbl_user WHERE email = ? LIMIT 1");
-if (!$check) {
+// Uniqueness: check tbl_user (case-insensitive)
+$checkUser = $conn->prepare("SELECT user_id FROM tbl_user WHERE LOWER(email) = ? LIMIT 1");
+if (!$checkUser) {
     json_out(['success' => false, 'error' => 'Database error'], 500);
 }
-$check->bind_param("s", $email);
-$check->execute();
-if ($check->get_result()->num_rows > 0) {
-    $check->close();
+$checkUser->bind_param("s", $email);
+$checkUser->execute();
+if ($checkUser->get_result()->num_rows > 0) {
+    $checkUser->close();
     json_out(['success' => false, 'error' => 'Email already in use'], 409);
 }
-$check->close();
+$checkUser->close();
+
+// Uniqueness: check tbl_technician (case-insensitive)
+$checkTech = $conn->prepare("SELECT technician_id FROM tbl_technician WHERE LOWER(email) = ? LIMIT 1");
+if (!$checkTech) {
+    json_out(['success' => false, 'error' => 'Database error'], 500);
+}
+$checkTech->bind_param("s", $email);
+$checkTech->execute();
+if ($checkTech->get_result()->num_rows > 0) {
+    $checkTech->close();
+    json_out(['success' => false, 'error' => 'Email already in use'], 409);
+}
+$checkTech->close();
 
 $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 

@@ -5,7 +5,7 @@ require_once __DIR__ . '/../bootstrap.php';
 $useNewAuth = false;
 if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
     require_once __DIR__ . '/../vendor/autoload.php';
-    if (class_exists('Services\AuthService')) {
+    if (class_exists('Services\\AuthService')) {
         $useNewAuth = true;
     }
 }
@@ -18,9 +18,10 @@ if (!$useNewAuth) {
 session_start();
 
 // Load CSRF middleware if available
-$csrfAvailable = class_exists('Middleware\CsrfMiddleware');
+$csrfAvailable = class_exists('Middleware\\CsrfMiddleware');
 
 $error = "";
+$registered = isset($_GET['registered']) && $_GET['registered'] === '1';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Validate CSRF token if available
@@ -38,10 +39,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 // Use new AuthService
                 $authService = new \Services\AuthService();
                 $userData = $authService->authenticate($email, $password);
-                
+
                 if ($userData !== false) {
                     $authService->createSession($userData);
-                    
+
                     // Redirect based on user type
                     if (isset($userData['user_type']) && $userData['user_type'] === 'external') {
                         header("Location: create_ticket.php");
@@ -120,7 +121,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                 $_SESSION['name'] = $row['name'];
                                 $_SESSION['user_type'] = $row['user_type'];
                                 $_SESSION['department_id'] = $row['department_id'];
-                                
+
                                 // Redirect based on user type
                                 if ($row['user_type'] === 'external') {
                                     header("Location: create_ticket.php");
@@ -166,12 +167,6 @@ $csrfTokenName = $csrfAvailable ? \Middleware\CsrfMiddleware::getTokenName() : '
 
   <div class="w-1/2 bg-white p-10 flex flex-col justify-center items-center login-form-section">
     <div class="w-full max-w-md">
-      <!-- <a href="#" class="text-sm text-gray-500 mb-6 inline-flex items-center">
-        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
-        </svg>
-        Back
-      </a> -->
       <h2 class="text-3xl font-bold mb-2 text-gray-800">Account Login</h2>
       <p class="text-gray-500 text-sm mb-8">If you are already a member you can login with your email address and password.</p>
       <form action="" method="post" class="space-y-6">
@@ -180,18 +175,22 @@ $csrfTokenName = $csrfAvailable ? \Middleware\CsrfMiddleware::getTokenName() : '
             <?php echo htmlspecialchars($error); ?>
           </div>
         <?php endif; ?>
-        <div id="signupSuccess" class="w-full p-3 bg-green-100 border border-green-400 text-green-800 rounded-md text-sm hidden"></div>
+        <?php if ($registered): ?>
+          <div class="w-full p-3 bg-green-100 border border-green-400 text-green-800 rounded-md text-sm">
+            Account created successfully. Please log in.
+          </div>
+        <?php endif; ?>
         <?php if ($csrfAvailable && !empty($csrfToken)): ?>
           <input type="hidden" name="<?php echo htmlspecialchars($csrfTokenName); ?>" value="<?php echo htmlspecialchars($csrfToken); ?>">
         <?php endif; ?>
         <div>
           <label for="email" class="block text-sm font-semibold text-gray-700 mb-2">Email address</label>
-          <input type="email" name="email" id="email" required 
+          <input type="email" name="email" id="email" required
                  class="w-full px-4 py-3.5 border-2 border-gray-300 rounded-md focus:outline-none transition-all text-base login-input">
         </div>
         <div>
           <label for="password" class="block text-sm font-semibold text-gray-700 mb-2">Password</label>
-          <input type="password" name="password" id="password" required 
+          <input type="password" name="password" id="password" required
                  class="w-full px-4 py-3.5 border-2 border-gray-300 rounded-md focus:outline-none transition-all text-base login-input">
         </div>
         <div class="flex items-center remember-me-container">
@@ -203,133 +202,11 @@ $csrfTokenName = $csrfAvailable ? \Middleware\CsrfMiddleware::getTokenName() : '
         </button>
       </form>
       <p class="mt-4 text-sm text-gray-500 text-center">
-        Don’t have an account?
-        <button type="button" id="openSignupModal" class="text-blue-600 hover:text-blue-700 font-medium">Sign up here</button>
+        Don't have an account?
+        <a href="register.php" class="text-blue-600 hover:text-blue-700 font-medium">Sign up here</a>
       </p>
     </div>
   </div>
 </div>
-
-<!-- Sign Up Modal -->
-<div id="signupModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
-  <div class="bg-white rounded-md shadow-md max-w-md w-full p-10 signup-modal-panel">
-    <div class="flex items-start justify-between mb-4">
-      <div>
-        <h2>Create Account</h2>
-        <p class="text-gray-500">Registers as Customer (External) only.</p>
-      </div>
-      <button type="button" id="closeSignupModal" class="text-gray-400 hover:text-gray-600">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-        </svg>
-      </button>
-    </div>
-
-    <div id="signupError" class="w-full p-3 bg-red-100 border border-red-400 text-red-700 rounded-md text-sm mb-4 hidden"></div>
-
-    <form id="signupForm" class="space-y-4">
-      <?php if ($csrfAvailable && !empty($csrfToken)): ?>
-        <input type="hidden" name="<?php echo htmlspecialchars($csrfTokenName); ?>" value="<?php echo htmlspecialchars($csrfToken); ?>">
-      <?php endif; ?>
-
-      <div>
-        <label>Full name</label>
-        <input name="name" type="text" required class="login-input">
-      </div>
-      <div>
-        <label>Email</label>
-        <input name="email" type="email" required class="login-input">
-      </div>
-      <div>
-        <label>Password</label>
-        <input name="password" type="password" minlength="8" required class="login-input">
-      </div>
-      <div>
-        <label>Confirm password</label>
-        <input name="password_confirm" type="password" minlength="8" required class="login-input">
-      </div>
-      <div>
-        <label>Company (optional)</label>
-        <input name="company" type="text" class="login-input">
-      </div>
-      <div>
-        <label>Phone (optional)</label>
-        <input name="phone" type="text" class="login-input">
-      </div>
-
-      <button type="submit" id="signupSubmitBtn" class="login-submit-btn">
-        Create account
-      </button>
-    </form>
-  </div>
-</div>
-
-<script>
-(function() {
-  const modal = document.getElementById('signupModal');
-  const openBtn = document.getElementById('openSignupModal');
-  const closeBtn = document.getElementById('closeSignupModal');
-  const form = document.getElementById('signupForm');
-  const errBox = document.getElementById('signupError');
-  const successBox = document.getElementById('signupSuccess');
-  const submitBtn = document.getElementById('signupSubmitBtn');
-
-  function openModal() {
-    errBox.classList.add('hidden');
-    errBox.textContent = '';
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-  }
-
-  function closeModal() {
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-  }
-
-  openBtn?.addEventListener('click', openModal);
-  closeBtn?.addEventListener('click', closeModal);
-  modal?.addEventListener('click', (e) => {
-    if (e.target === modal) closeModal();
-  });
-
-  form?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    errBox.classList.add('hidden');
-    errBox.textContent = '';
-    successBox.classList.add('hidden');
-    successBox.textContent = '';
-
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Creating...';
-
-    try {
-      const fd = new FormData(form);
-      const res = await fetch('../php/register_user.php', {
-        method: 'POST',
-        body: fd
-      });
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok || !data || data.success !== true) {
-        const msg = (data && (data.error || data.message)) ? (data.error || data.message) : ('Registration failed (' + res.status + ')');
-        errBox.textContent = msg;
-        errBox.classList.remove('hidden');
-        return;
-      }
-
-      closeModal();
-      form.reset();
-      successBox.textContent = data.message || 'Account created. Please log in.';
-      successBox.classList.remove('hidden');
-    } catch (err) {
-      errBox.textContent = 'Registration failed. Please try again.';
-      errBox.classList.remove('hidden');
-    } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Create account';
-    }
-  });
-})();
-</script>
 </body>
 </html>
