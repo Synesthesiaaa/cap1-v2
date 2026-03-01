@@ -16,8 +16,12 @@ if (!$useNewStructure) {
         include("insert_log_monitor.php");
     }
 }
+if (!isset($conn) || !($conn instanceof mysqli)) {
+    include("db.php");
+}
 
 session_start();
+require_once 'customer_summary_refresh.php';
 
 @header("Content-Type: application/json");
 @ini_set('display_errors', 0);
@@ -66,6 +70,8 @@ try {
         echo json_encode(["ok" => false, "error" => "Ticket not found"]);
         exit();
     }
+
+    refreshTicketSummaryByTicketId((int)$ticket_id, (isset($conn) && $conn instanceof mysqli) ? $conn : null);
 
     // ✅ Insert log entry
     $roleLabel = ucfirst($user_role); 

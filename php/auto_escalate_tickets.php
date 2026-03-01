@@ -7,6 +7,7 @@
  */
 
 require_once 'db.php';
+require_once 'customer_summary_refresh.php';
 
 // Set execution time limit for long-running script
 set_time_limit(300);
@@ -190,6 +191,8 @@ function autoEscalateTickets($conn) {
         $log_stmt->bind_param("is", $ticket_id, $log_details);
         $log_stmt->execute();
         $log_stmt->close();
+
+        refreshTicketSummaryByTicketId((int)$ticket_id, $conn);
         
         $results['escalated']++;
         

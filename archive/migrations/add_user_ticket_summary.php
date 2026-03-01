@@ -20,6 +20,34 @@ $conn->query("CREATE TABLE IF NOT EXISTS tbl_user_ticket_summary (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 echo "Created tbl_user_ticket_summary\n";
 
+// Ensure performance indexes used by customer management filters.
+$dbName = defined('DB_NAME') ? DB_NAME : ($_ENV['DB_NAME'] ?? 'ts_isc');
+$dbEsc = $conn->real_escape_string($dbName);
+$idxChecks = [
+    'idx_current_ticket_status' => "ALTER TABLE tbl_user_ticket_summary ADD INDEX idx_current_ticket_status (current_ticket_status)",
+    'idx_sla_status' => "ALTER TABLE tbl_user_ticket_summary ADD INDEX idx_sla_status (sla_status)",
+    'idx_last_contact' => "ALTER TABLE tbl_user_ticket_summary ADD INDEX idx_last_contact (last_contact)",
+    'idx_ticket_urgent' => "ALTER TABLE tbl_user_ticket_summary ADD INDEX idx_ticket_urgent (ticket_count, urgent_high_count)",
+    'idx_success_rate' => "ALTER TABLE tbl_user_ticket_summary ADD INDEX idx_success_rate (success_rate)",
+];
+foreach ($idxChecks as $idxName => $ddl) {
+    $exists = $conn->query("
+        SELECT 1
+        FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = '{$dbEsc}'
+          AND TABLE_NAME = 'tbl_user_ticket_summary'
+          AND INDEX_NAME = '" . $conn->real_escape_string($idxName) . "'
+        LIMIT 1
+    ");
+    if (!$exists || $exists->num_rows === 0) {
+        if ($conn->query($ddl)) {
+            echo "Added index {$idxName}\n";
+        } else {
+            echo "Index {$idxName} add failed (continuing): {$conn->error}\n";
+        }
+    }
+}
+
 $conn->query("TRUNCATE TABLE tbl_user_ticket_summary");
 echo "Truncated (refresh)\n";
 

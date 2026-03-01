@@ -20,8 +20,12 @@ if (!$useNewStructure) {
     include("db.php");
     include("../utils/reference_generator.php");
 }
+if (!isset($conn) || !($conn instanceof mysqli)) {
+    include("db.php");
+}
 
 session_start();
+require_once 'customer_summary_refresh.php';
 
 if (!isset($_SESSION['id'])) {
     header("Location: ../views/login.php");
@@ -97,6 +101,11 @@ if ($useNewStructure) {
             if (!empty($description) && function_exists('processTicketForProducts')) {
                 processTicketForProducts($conn, $result['ticket_id'], $description, $user_id);
             }
+
+            refreshUserTicketSummary(
+                (int)$user_id,
+                (isset($conn) && $conn instanceof mysqli) ? $conn : null
+            );
             
             // Redirect
             if ($user_role === 'user') {
@@ -339,6 +348,8 @@ if ($stmt->execute()) {
     if (!empty($description)) {
         processTicketForProducts($conn, $ticket_id, $description, $user_id);
     }
+
+    refreshUserTicketSummary((int)$user_id, $conn);
 
     if (isset($_SESSION['role']) && $_SESSION['role'] === 'user') {
         header("Location: ../views/user_ticket_monitor.php?success=ticket_created&ref=" . urlencode($reference_id));

@@ -459,7 +459,7 @@ $total_customers = $result->fetch_assoc()['total'];
             <div class="flex flex-col space-y-2">
               <button type="button" id="viewTicketBtn" class="bg-slate-800 text-white text-sm px-4 py-1.5 rounded hover:bg-slate-700 transition" disabled>View Ticket</button>
               <button type="button" id="viewHistoryBtn" class="bg-slate-800 text-white text-sm px-4 py-1.5 rounded hover:bg-slate-700 transition">View History</button>
-              <button type="button" id="viewProductsBtn" class="bg-slate-800 text-white text-sm px-4 py-1.5 rounded hover:bg-slate-700 transition">Products</button>
+              <button type="button" id="viewProductsBtn" class="bg-slate-800 text-white text-sm px-4 py-1.5 rounded hover:bg-slate-700 transition">Product History</button>
               <?php if ($isReadOnly): ?>
                 <span class="text-xs text-gray-500 italic">Read-only mode</span>
               <?php endif; ?>
@@ -488,11 +488,14 @@ $total_customers = $result->fetch_assoc()['total'];
             </div>
           </div>
 
-          <!-- Product History -->
+          <!-- Active Products -->
           <div>
-            <h4 class="text-sm font-semibold text-gray-700 mb-2">Product History</h4>
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="text-sm font-semibold text-gray-700">Active Products</h4>
+              <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Count: <span id="activeProductsCount">0</span></span>
+            </div>
             <div id="profileProducts" class="space-y-2">
-              <!-- items injected by JS -->
+              <div class="bg-gray-50 p-3 rounded-lg border text-sm text-gray-500">Select a customer to view active products.</div>
             </div>
           </div>
 
@@ -621,7 +624,7 @@ $total_customers = $result->fetch_assoc()['total'];
   </script>
 
   <!-- Load customer search JS -->
-  <script src="../js/customer_search.js?v=2"></script>
+  <script src="../js/customer_search.js?v=3"></script>
   
   <!-- Additional UI enhancements -->
   <script>

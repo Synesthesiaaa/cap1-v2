@@ -7,6 +7,7 @@
 
 @session_start();
 @header("Content-Type: application/json");
+require_once 'customer_summary_refresh.php';
 
 while (@ob_get_level()) @ob_end_clean();
 @ob_start();
@@ -63,6 +64,7 @@ try {
             }
             
             if ($result) {
+                refreshTicketSummaryByTicketId((int)$ticket['ticket_id']);
                 json_response(['ok' => true, 'status' => $newStatus, 'message' => $message]);
             } else {
                 json_response(['ok' => false, 'error' => 'Failed to update ticket'], 500);
@@ -141,6 +143,8 @@ try {
                     insertTicketLog($r['ticket_id'], $_SESSION['id'], $user_role, $action_type, $action_details, $conn);
                 }
             }
+
+            refreshTicketSummaryByTicketId((int)$r['ticket_id'], $conn);
         }
 
         json_response(['ok' => true, 'status' => $new_status, 'message' => $message]);
@@ -151,3 +155,10 @@ try {
             $conn->close();
         }
         exit();
+    } else {
+        json_response(['ok' => false, 'error' => 'Failed to update ticket'], 500);
+    }
+    }
+} catch (Throwable $e) {
+    json_response(['ok' => false, 'error' => $e->getMessage()], 500);
+}

@@ -105,6 +105,8 @@ class TicketService
                     $this->autoGenerateChecklist($ticketId, $data['category'], $data['type'] ?? null);
                 }
 
+                $this->refreshSummaryForTicket((int)$ticketId, $userId);
+
                 $this->logger->info("Ticket created successfully", [
                     'ticket_id' => $ticketId,
                     'reference_id' => $referenceId,
@@ -162,6 +164,8 @@ class TicketService
                     'ticket_id' => $ticketId,
                     'user_id' => $userId
                 ]);
+
+                $this->refreshSummaryForTicket($ticketId);
             }
 
             return $result;
@@ -234,6 +238,8 @@ class TicketService
                     'ticket_id' => $ticketId,
                     'user_id' => $userId
                 ]);
+
+                $this->refreshSummaryForTicket($ticketId);
             }
 
             return $result;
@@ -471,5 +477,30 @@ class TicketService
             'ticket_id' => $ticketId,
             'category' => $category
         ]);
+    }
+
+    /**
+     * Refresh per-user customer summary after ticket mutation.
+     */
+    private function refreshSummaryForTicket(int $ticketId, ?int $userId = null): void
+    {
+        try {
+            require_once __DIR__ . '/../../php/customer_summary_refresh.php';
+
+            if ($userId !== null && function_exists('refreshUserTicketSummary')) {
+                \refreshUserTicketSummary((int)$userId, $this->conn);
+                return;
+            }
+
+            if (function_exists('refreshTicketSummaryByTicketId')) {
+                \refreshTicketSummaryByTicketId((int)$ticketId, $this->conn);
+            }
+        } catch (\Throwable $e) {
+            $this->logger->warning("Failed to refresh customer summary", [
+                'ticket_id' => $ticketId,
+                'user_id' => $userId,
+                'error' => $e->getMessage()
+            ]);
+        }
     }
 }

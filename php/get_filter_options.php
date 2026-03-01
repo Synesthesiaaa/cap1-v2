@@ -1,293 +1,293 @@
 <?php
 /**
- * API to get filter options for customer search
- * Fetches dynamic values based on search context for user types, SLA statuses, and activity statuses
+ * Customer-management filter options API.
+ * Optimized to use tbl_user_ticket_summary for dynamic SLA/activity counts.
  */
 
-// Prevent PHP notices/warnings from breaking JSON response
 @ini_set('display_errors', '0');
 ob_start();
 
 require_once 'db.php';
 
-/**
- * Filter Options API Class
- */
-class FilterOptionsAPI extends BaseAPI {
-
-    public function handleRequest() {
+class FilterOptionsAPI extends BaseAPI
+{
+    public function handleRequest(): void
+    {
         header('Content-Type: application/json; charset=utf-8');
 
         try {
-            // Get search parameters to filter options contextually
-            $search      = $this->sanitizeInput($_GET['q'] ?? '');
-            $userType    = $this->sanitizeInput($_GET['user_type'] ?? 'all');
-            $filterType  = $this->sanitizeInput($_GET['type'] ?? 'all');
+            $search = $this->sanitizeInput($_GET['q'] ?? '');
+            $userType = $this->sanitizeInput($_GET['user_type'] ?? 'all');
+            $filterType = $this->sanitizeInput($_GET['type'] ?? 'all');
 
             $response = [];
-
             if ($filterType === 'all' || $filterType === 'user_types') {
-                $response['user_types'] = $this->getUserTypes($search, $userType);
+                $response['user_types'] = $this->getUserTypes($search);
+            }
+
+            $source = 'summary';
+            $counts = $this->getSummaryCounts($search, $userType);
+            if ($counts === null) {
+                $source = 'fallback';
+                $counts = $this->getFallbackCounts($search, $userType);
             }
 
             if ($filterType === 'all' || $filterType === 'sla_statuses') {
-                $response['sla_statuses'] = $this->getSLAStatuses($search, $userType);
+                $response['sla_statuses'] = $this->buildSlaOptions($counts);
             }
-
             if ($filterType === 'all' || $filterType === 'activity_statuses') {
-                $response['activity_statuses'] = $this->getActivityStatuses($search, $userType);
+                $response['activity_statuses'] = $this->buildActivityOptions($counts);
             }
 
-            if (ob_get_level()) ob_end_clean();
+            $response['source'] = $source;
+
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
             $this->sendResponse($response);
         } catch (Throwable $e) {
             error_log('get_filter_options error: ' . $e->getMessage());
-            if (ob_get_level()) ob_end_clean();
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
             $this->sendResponse([
                 'user_types' => [['value' => 'all', 'label' => 'All Users']],
                 'sla_statuses' => [['value' => 'all', 'label' => 'All SLA Status']],
-                'activity_statuses' => [['value' => 'all', 'label' => 'All Activity']]
+                'activity_statuses' => [['value' => 'all', 'label' => 'All Activity']],
+                'source' => 'error',
             ]);
         }
     }
 
-    /**
-     * Get distinct user types from database - always show all available options
-     * Count users based on search context (not current user type filter)
-     */
-    private function getUserTypes($search, $userTypeFilter) {
-        // For user types, we want to show ALL available options regardless of current filter
-        // So we base the search context but not the user type filter restriction
-
-        $whereConditions = [];
+    private function getUserTypes(string $search): array
+    {
         $params = [];
         $types = '';
+        $where = $this->buildUserWhere($search, 'all', $params, $types, false);
 
-        // Apply search conditions if provided (but not user type filter since we want all user types)
-        if (!empty($search)) {
-            $whereConditions[] = "(u.name LIKE ? OR u.email LIKE ? OR u.company LIKE ? OR CAST(u.user_id AS CHAR) LIKE ? OR u.phone LIKE ?)";
-            $searchParam = "%{$search}%";
-            $params = array_merge($params, [$searchParam, $searchParam, $searchParam, $searchParam, $searchParam]);
-            $types .= 'sssss';
+        $sql = "SELECT u.user_type, COUNT(*) AS cnt FROM tbl_user u {$where} GROUP BY u.user_type";
+        $stmt = $this->conn->prepare($sql);
+        if (!$stmt) {
+            return [['value' => 'all', 'label' => 'All Users']];
         }
+        if (!empty($params)) {
+            $stmt->bind_param($types, ...$params);
+        }
+        $stmt->execute();
+        $res = $stmt->get_result();
 
-        $whereClause = !empty($whereConditions) ? "WHERE " . implode(" AND ", $whereConditions) : "";
+        $map = ['external' => 0, 'internal' => 0];
+        while ($row = $res->fetch_assoc()) {
+            $ut = $row['user_type'] ?? '';
+            if (isset($map[$ut])) {
+                $map[$ut] = (int)$row['cnt'];
+            }
+        }
+        $stmt->close();
 
-        // Get counts for each user type considering only the search context
-        $userTypeList = ['external', 'internal'];
-        $resultOptions = [];
-
-        foreach ($userTypeList as $userType) {
-            $typeWhere = $whereClause ? $whereClause . " AND u.user_type = ?" : "WHERE u.user_type = ?";
-            $countParams = !empty($search) ? array_merge($params, [$userType]) : [$userType];
-            $countTypes = $types . 's';
-
-            $countQuery = "
-                SELECT COUNT(DISTINCT u.user_id) as count
-                FROM tbl_user u
-                LEFT JOIN tbl_department d ON u.department_id = d.department_id
-                LEFT JOIN tbl_ticket t ON u.user_id = t.user_id
-                {$typeWhere}
-            ";
-
-            $stmt = $this->conn->prepare($countQuery);
-            $stmt->bind_param($countTypes, ...$countParams);
-            $stmt->execute();
-            $row = $stmt->get_result()->fetch_assoc();
-            $count = $row ? (int)$row['count'] : 0;
-            $stmt->close();
-
-            // Only include user types that have users
-            if ($count > 0) {
-                $resultOptions[] = [
-                    'value' => $userType,
-                    'label' => ucfirst($userType) . ' (' . $count . ')'
+        $out = [['value' => 'all', 'label' => 'All Users']];
+        foreach (['internal', 'external'] as $ut) {
+            if ($map[$ut] > 0) {
+                $out[] = [
+                    'value' => $ut,
+                    'label' => ucfirst($ut) . ' (' . $map[$ut] . ')',
                 ];
             }
         }
 
-        // Always add 'all' option at the beginning
-        array_unshift($resultOptions, [
-            'value' => 'all',
-            'label' => 'All Users'
-        ]);
-
-        return $resultOptions;
+        return $out;
     }
 
     /**
-     * Build base conditions for filtering operations
+     * Returns summary-backed counts, or null if summary table is unavailable.
      */
-    private function buildBaseConditions($search, $userTypeFilter) {
-        $whereConditions = [];
-        $params = [];
-        $types = '';
-
-        // Apply user type filter if specified
-        if ($userTypeFilter === 'internal') {
-            $whereConditions[] = "u.user_type = 'internal'";
-        } elseif ($userTypeFilter === 'external') {
-            $whereConditions[] = "u.user_type = 'external'";
-        } // 'all' includes both
-
-        // Apply search conditions if provided
-        if (!empty($search)) {
-            $whereConditions[] = "(u.name LIKE ? OR u.email LIKE ? OR u.company LIKE ? OR CAST(u.user_id AS CHAR) LIKE ? OR u.phone LIKE ?)";
-            $searchParam = "%{$search}%";
-            $params = array_merge($params, [$searchParam, $searchParam, $searchParam, $searchParam, $searchParam]);
-            $types .= 'sssss';
+    private function getSummaryCounts(string $search, string $userType): ?array
+    {
+        if (!$this->hasSummaryTable()) {
+            return null;
         }
 
-        $whereClause = !empty($whereConditions) ? "WHERE " . implode(" AND ", $whereConditions) : "";
+        $params = [];
+        $types = '';
+        $where = $this->buildUserWhere($search, $userType, $params, $types, true);
+
+        $sql = "
+            SELECT
+                COUNT(*) AS users_total,
+                SUM(CASE WHEN COALESCE(s.ticket_count, 0) >= 3 AND COALESCE(s.urgent_high_count, 0) > 0 THEN 1 ELSE 0 END) AS sla_priority,
+                SUM(CASE WHEN s.last_contact >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS sla_recent,
+                SUM(CASE WHEN COALESCE(s.success_rate, 0) >= 80 THEN 1 ELSE 0 END) AS sla_success,
+                SUM(CASE WHEN s.current_ticket_status IN ('assigning', 'pending', 'followup') THEN 1 ELSE 0 END) AS activity_active,
+                SUM(CASE WHEN s.sla_status = 'At Risk' THEN 1 ELSE 0 END) AS activity_overdue,
+                SUM(CASE WHEN COALESCE(s.ticket_count, 0) <= 2 THEN 1 ELSE 0 END) AS activity_churn
+            FROM tbl_user u
+            LEFT JOIN tbl_user_ticket_summary s ON s.user_id = u.user_id
+            {$where}
+        ";
+
+        $stmt = $this->conn->prepare($sql);
+        if (!$stmt) {
+            return null;
+        }
+        if (!empty($params)) {
+            $stmt->bind_param($types, ...$params);
+        }
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$row) {
+            return null;
+        }
 
         return [
-            'whereClause' => $whereClause,
-            'conditions' => $whereConditions,
-            'params' => $params,
-            'types' => $types
+            'sla_priority' => (int)($row['sla_priority'] ?? 0),
+            'sla_recent' => (int)($row['sla_recent'] ?? 0),
+            'sla_success' => (int)($row['sla_success'] ?? 0),
+            'activity_active' => (int)($row['activity_active'] ?? 0),
+            'activity_overdue' => (int)($row['activity_overdue'] ?? 0),
+            'activity_churn' => (int)($row['activity_churn'] ?? 0),
         ];
     }
 
     /**
-     * Get SLA status filter options with counts based on search context
-     * Allow all filters to be available regardless of current filter state
+     * Fallback counts when summary table is missing.
+     * Keeps behavior functional, but this path is intentionally conservative.
      */
-    private function getSLAStatuses($search, $userTypeFilter) {
-        // Build base conditions that match search and user type context
-        $baseConditions = $this->buildBaseConditions($search, $userTypeFilter);
+    private function getFallbackCounts(string $search, string $userType): array
+    {
+        $params = [];
+        $types = '';
+        $where = $this->buildUserWhere($search, $userType, $params, $types, true);
 
-        $statuses = [
-            [
-                'value' => 'all',
-                'label' => 'All SLA Status'
-            ]
-        ];
+        $sql = "
+            SELECT
+                SUM(CASE WHEN agg.ticket_count >= 3 AND agg.urgent_high_count > 0 THEN 1 ELSE 0 END) AS sla_priority,
+                SUM(CASE WHEN agg.last_contact >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS sla_recent,
+                SUM(CASE WHEN COALESCE(agg.success_rate, 0) >= 80 THEN 1 ELSE 0 END) AS sla_success,
+                SUM(CASE WHEN latest.current_ticket_status IN ('assigning', 'pending', 'followup') THEN 1 ELSE 0 END) AS activity_active,
+                SUM(CASE WHEN agg.sla_status = 'At Risk' THEN 1 ELSE 0 END) AS activity_overdue,
+                SUM(CASE WHEN COALESCE(agg.ticket_count, 0) <= 2 THEN 1 ELSE 0 END) AS activity_churn
+            FROM tbl_user u
+            LEFT JOIN (
+                SELECT
+                    t.user_id,
+                    COUNT(*) AS ticket_count,
+                    MAX(t.created_at) AS last_contact,
+                    ROUND((SUM(CASE WHEN t.status = 'complete' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)) * 100, 1) AS success_rate,
+                    CASE
+                        WHEN SUM(CASE WHEN t.sla_date < CURDATE() AND t.status != 'complete' THEN 1 ELSE 0 END) > 0 THEN 'At Risk'
+                        WHEN SUM(CASE WHEN t.sla_date >= CURDATE() AND t.sla_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY) AND t.status != 'complete' THEN 1 ELSE 0 END) > 0 THEN 'Approaching'
+                        ELSE 'On Track'
+                    END AS sla_status,
+                    SUM(CASE WHEN t.priority IN ('urgent', 'high') THEN 1 ELSE 0 END) AS urgent_high_count
+                FROM tbl_ticket t
+                GROUP BY t.user_id
+            ) agg ON agg.user_id = u.user_id
+            LEFT JOIN (
+                SELECT x.user_id, x.status AS current_ticket_status
+                FROM (
+                    SELECT t.user_id, t.status, ROW_NUMBER() OVER (PARTITION BY t.user_id ORDER BY t.created_at DESC, t.ticket_id DESC) AS rn
+                    FROM tbl_ticket t
+                ) x
+                WHERE x.rn = 1
+            ) latest ON latest.user_id = u.user_id
+            {$where}
+        ";
 
-        // Define SLA filter criteria with descriptive labels
-        $slaCriteria = [
-            'priority' => [
-                'having' => "COUNT(t.ticket_id) >= 3 AND SUM(CASE WHEN t.priority IN ('urgent', 'high') THEN 1 ELSE 0 END) > 0",
-                'label' => 'Priority Clients (3+ tickets, urgent/high)'
-            ],
-            'recent' => [
-                'having' => "MAX(t.created_at) >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
-                'label' => 'Recently Contacted (30 days)'
-            ],
-            'success' => [
-                'having' => "(SUM(CASE WHEN t.status = 'complete' THEN 1 ELSE 0 END) / NULLIF(COUNT(t.ticket_id), 0)) >= 0.8 AND AVG(CASE WHEN t.status = 'complete' THEN DATEDIFF(NOW(), t.created_at) END) <= 5",
-                'label' => 'High Success Rate (80%+, <5 days avg)'
-            ]
-        ];
-
-        // Query database for each category count
-        foreach ($slaCriteria as $value => $criteria) {
-            $havingClause = $criteria['having'];
-
-            $query = "
-                SELECT COUNT(*) as count FROM (
-                    SELECT u.user_id
-                    FROM tbl_user u
-                    LEFT JOIN tbl_department d ON u.department_id = d.department_id
-                    LEFT JOIN tbl_ticket t ON u.user_id = t.user_id
-                    {$baseConditions['whereClause']}
-                    GROUP BY u.user_id
-                    HAVING {$havingClause}
-                ) as filtered_users
-            ";
-
-            $stmt = $this->conn->prepare($query);
-            if (!$stmt) continue;
-            if (!empty($baseConditions['params'])) {
-                $stmt->bind_param($baseConditions['types'], ...$baseConditions['params']);
-            }
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $row = $result ? $result->fetch_assoc() : null;
-            $count = $row ? (int)($row['count'] ?? 0) : 0;
-            $stmt->close();
-
-            // Always include all SLA options, even if count is 0 (for filter selection)
-            $statuses[] = [
-                'value' => $value,
-                'label' => $criteria['label'] . ' (' . $count . ')'
+        $stmt = $this->conn->prepare($sql);
+        if (!$stmt) {
+            return [
+                'sla_priority' => 0,
+                'sla_recent' => 0,
+                'sla_success' => 0,
+                'activity_active' => 0,
+                'activity_overdue' => 0,
+                'activity_churn' => 0,
             ];
         }
+        if (!empty($params)) {
+            $stmt->bind_param($types, ...$params);
+        }
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
 
-        return $statuses;
+        return [
+            'sla_priority' => (int)($row['sla_priority'] ?? 0),
+            'sla_recent' => (int)($row['sla_recent'] ?? 0),
+            'sla_success' => (int)($row['sla_success'] ?? 0),
+            'activity_active' => (int)($row['activity_active'] ?? 0),
+            'activity_overdue' => (int)($row['activity_overdue'] ?? 0),
+            'activity_churn' => (int)($row['activity_churn'] ?? 0),
+        ];
     }
 
-    /**
-     * Get activity status filter options with counts based on search context
-     * Queries database to count customers matching each activity category
-     */
-    private function getActivityStatuses($search, $userTypeFilter) {
-        // Build base conditions that match the search context
-        $baseConditions = $this->buildBaseConditions($search, $userTypeFilter);
+    private function buildSlaOptions(array $counts): array
+    {
+        return [
+            ['value' => 'all', 'label' => 'All SLA Status'],
+            ['value' => 'priority', 'label' => 'Priority Clients (3+ tickets, urgent/high) (' . (int)$counts['sla_priority'] . ')'],
+            ['value' => 'recent', 'label' => 'Recently Contacted (30 days) (' . (int)$counts['sla_recent'] . ')'],
+            ['value' => 'success', 'label' => 'High Success Rate (80%+, fast resolution) (' . (int)$counts['sla_success'] . ')'],
+        ];
+    }
 
-        $statuses = [
-            [
-                'value' => 'all',
-                'label' => 'All Activity'
-            ]
+    private function buildActivityOptions(array $counts): array
+    {
+        $options = [
+            ['value' => 'all', 'label' => 'All Activity'],
         ];
 
-        // Define activity filter criteria and labels
-        $activityCriteria = [
-            'active' => [
-                'having' => "COUNT(CASE WHEN t.status IN ('assigning', 'pending', 'followup') THEN 1 END) > 0",
-                'label' => 'Active (Assigning, Pending, Follow-up)'
-            ],
-            'overdue' => [
-                'having' => "COUNT(CASE WHEN t.sla_date < CURDATE() AND t.status != 'complete' THEN 1 END) > 0",
-                'label' => 'Overdue (Past SLA dates)'
-            ],
-            'churn_risk' => [
-                'having' => "COUNT(t.ticket_id) <= 2",
-                'label' => 'Churn Risk (≤2 tickets)'
-            ]
+        $map = [
+            'active' => ['count' => (int)$counts['activity_active'], 'label' => 'Active (Assigning, Pending, Follow-up)'],
+            'overdue' => ['count' => (int)$counts['activity_overdue'], 'label' => 'Overdue (Past SLA dates)'],
+            'churn_risk' => ['count' => (int)$counts['activity_churn'], 'label' => 'Churn Risk (<=2 tickets)'],
         ];
 
-        // Query database for each category count
-        foreach ($activityCriteria as $value => $criteria) {
-            $havingClause = $criteria['having'];
-
-            $query = "
-                SELECT COUNT(*) as count FROM (
-                    SELECT u.user_id
-                    FROM tbl_user u
-                    LEFT JOIN tbl_department d ON u.department_id = d.department_id
-                    LEFT JOIN tbl_ticket t ON u.user_id = t.user_id
-                    {$baseConditions['whereClause']}
-                    GROUP BY u.user_id
-                    HAVING {$havingClause}
-                ) as filtered_users
-            ";
-
-            $stmt = $this->conn->prepare($query);
-            if (!$stmt) continue;
-            if (!empty($baseConditions['params'])) {
-                $stmt->bind_param($baseConditions['types'], ...$baseConditions['params']);
-            }
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $row = $result ? $result->fetch_assoc() : null;
-            $count = $row ? (int)($row['count'] ?? 0) : 0;
-            $stmt->close();
-
-            // Only add if there are matching customers (except for 'all' which is always shown)
-            if ($value === 'all' || $count > 0) {
-                $statuses[] = [
+        foreach ($map as $value => $cfg) {
+            if ($cfg['count'] > 0) {
+                $options[] = [
                     'value' => $value,
-                    'label' => $criteria['label'] . ' (' . $count . ')'
+                    'label' => $cfg['label'] . ' (' . $cfg['count'] . ')',
                 ];
             }
         }
 
-        return $statuses;
+        return $options;
+    }
+
+    private function buildUserWhere(string $search, string $userType, array &$params, string &$types, bool $includeUserType): string
+    {
+        $conditions = [];
+
+        if ($includeUserType && in_array($userType, ['internal', 'external'], true)) {
+            $conditions[] = 'u.user_type = ?';
+            $params[] = $userType;
+            $types .= 's';
+        }
+
+        if ($search !== '') {
+            $conditions[] = "(u.name LIKE ? OR u.email LIKE ? OR u.company LIKE ? OR CAST(u.user_id AS CHAR) LIKE ? OR u.phone LIKE ?)";
+            $needle = '%' . $search . '%';
+            $params = array_merge($params, [$needle, $needle, $needle, $needle, $needle]);
+            $types .= 'sssss';
+        }
+
+        if (empty($conditions)) {
+            return '';
+        }
+
+        return ' WHERE ' . implode(' AND ', $conditions);
+    }
+
+    private function hasSummaryTable(): bool
+    {
+        $res = @$this->conn->query("SHOW TABLES LIKE 'tbl_user_ticket_summary'");
+        return $res && $res->num_rows > 0;
     }
 }
 
-// Entry point
 $api = new FilterOptionsAPI();
 $api->handleRequest();
-?>
+

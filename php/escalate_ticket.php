@@ -16,6 +16,10 @@ if (!$useNewStructure) {
         include("insert_log_monitor.php");
     }
 }
+if (!isset($conn) || !($conn instanceof mysqli)) {
+    include("db.php");
+}
+require_once 'customer_summary_refresh.php';
 
 session_start();
 
@@ -159,6 +163,7 @@ try {
     $stmt->bind_param("issi", $technician_id, $priority, $urgency, $ticket_id);
     $stmt->execute();
     $stmt->close();
+    refreshTicketSummaryByTicketId((int)$ticket_id, $conn);
 
     // Insert log
     $action_type = "escalate";
