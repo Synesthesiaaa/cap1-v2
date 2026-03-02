@@ -104,11 +104,16 @@ if ($overdue) {
 }
 
 if ($backlog) {
-    $where[] = "t.status != 'Completed'";
+    $where[] = "t.status != 'complete'";
 }
 
 if ($escalated_filter) {
-    $where[] = "t.status = 'Escalated'";
+    $where[] = "EXISTS (
+        SELECT 1
+        FROM tbl_ticket_escalation e2
+        WHERE e2.ticket_id = t.ticket_id
+          AND e2.sla_status IN ('escalated', 'overdue')
+    )";
 }
 
 /* Always exclude completed unless specifically filtering for backlog */
@@ -192,10 +197,10 @@ if ($userId === null) {
     /* Escalations (Assigned + Exists in escalation table) */
     $summary['escalations'] = getSingleValue(
         $conn,
-        "SELECT COUNT(*) FROM tbl_ticket t
+        "SELECT COUNT(DISTINCT t.ticket_id) FROM tbl_ticket t
          JOIN tbl_ticket_escalation e ON e.ticket_id = t.ticket_id
          WHERE t.assigned_technician_id = ?
-         AND e.sla_status = 'Escalated'",
+         AND e.sla_status IN ('escalated', 'overdue')",
         "i",
         [$tech_id]
     );

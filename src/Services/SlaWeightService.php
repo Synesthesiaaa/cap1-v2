@@ -3,6 +3,7 @@
 namespace Services;
 
 use Database\Connection;
+require_once __DIR__ . '/../../config/sla_automation_rules.php';
 
 /**
  * SLA Weight Service
@@ -14,21 +15,6 @@ use Database\Connection;
 class SlaWeightService
 {
     private $conn;
-
-    /** Map form category strings to tbl_sla_weight category (for variations) */
-    private static $categoryAliases = [
-        'System Access or Login Issues' => 'System access',
-        'Network or router troubleshooting' => 'Network or router troubleshooting',
-        'Coordination with other departments' => 'Coordination with other departments',
-        'Biling or reconciliation disputs' => 'Billing or reconciliation disputes',
-        'Report Generation errors' => 'report generation errors',
-        'Finandial data sync issues' => 'Financial data sync issues',
-        'Apprval for replacement items' => 'Approval for replacement items',
-        'Onboarding or Offboarding system access' => 'Onboarding or offboarding system access',
-        'Delivery Confirmation requests' => 'Delivery confirmation requests',
-        'Air Conditioning' => 'Airconditioning',
-        'System-generated report errors' => 'System generated report errors',
-    ];
 
     public function __construct()
     {
@@ -45,31 +31,30 @@ class SlaWeightService
      */
     public function computePriorityScore(string $category, string $type, string $userType = 'internal'): array
     {
+        $normalizedCategory = $this->normalizeCategory($category);
+        $customerWeight = \slaCustomerWeight($userType);
         $result = [
             'priority_score' => 0.0,
             'priority' => 'low',
             'department_id' => null,
             'department_name' => null,
             'sla_weight' => null,
+            'matched_sla_weight_id' => null,
+            'normalized_category' => $normalizedCategory,
+            'customer_weight' => $customerWeight,
         ];
 
-        $sla = $this->getByCategoryAndType($category, $type);
+        $sla = $this->getByCategoryAndType($normalizedCategory, $type, $category);
         if (!$sla) {
             return $result;
         }
 
         $result['sla_weight'] = $sla;
+        $result['matched_sla_weight_id'] = (int)$sla['sla_weight_id'];
         $result['department_name'] = $sla['department_name'];
-
-        $T = (int) $sla['time_value'];
-        $I = (int) $sla['importance'];
-        $C = (strtolower($userType) === 'external') ? 9 : 8;
-
-        $P = (0.5 * $I) + (0.3 * $C) + (0.2 * (11 - $T));
-        $P = $this->applyOverrideRules($P, $I, $C);
-
-        $result['priority_score'] = round($P, 2);
-        $result['priority'] = $this->mapScoreToPriority($P);
+        $result['normalized_category'] = (string)$sla['category'];
+        $result['priority_score'] = \slaComputePriorityScore((int)$sla['time_value'], (int)$sla['importance'], $userType);
+        $result['priority'] = \slaMapScoreToPriority((float)$result['priority_score']);
         $result['department_id'] = $this->getDepartmentId($sla['department_name']);
 
         return $result;
@@ -78,7 +63,7 @@ class SlaWeightService
     /**
      * Get SLA weight row by category and department/type
      */
-    public function getByCategoryAndType(string $category, string $type): ?array
+    public function getByCategoryAndType(string $category, string $type, ?string $originalCategory = null): ?array
     {
         $category = trim($category);
         $type = trim($type);
@@ -86,59 +71,33 @@ class SlaWeightService
             return null;
         }
 
-        $normalizedCategory = self::$categoryAliases[$category] ?? $category;
-
         $sql = "SELECT sla_weight_id, category, department_name, time_value, importance 
                 FROM tbl_sla_weight 
                 WHERE category = ? AND department_name = ? 
                 LIMIT 1";
-        $stmt = $this->conn->prepare($sql);
-        if (!$stmt) {
-            return null;
-        }
-        $stmt->bind_param("ss", $normalizedCategory, $type);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        $stmt->close();
-
-        if ($row) {
-            return $row;
+        $candidates = [$category];
+        if ($originalCategory !== null) {
+            $orig = trim($originalCategory);
+            if ($orig !== '' && !in_array($orig, $candidates, true)) {
+                $candidates[] = $orig;
+            }
         }
 
-        $stmt = $this->conn->prepare($sql);
-        $stmt->bind_param("ss", $category, $type);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        $stmt->close();
+        foreach ($candidates as $cat) {
+            $stmt = $this->conn->prepare($sql);
+            if (!$stmt) {
+                return null;
+            }
+            $stmt->bind_param("ss", $cat, $type);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            if ($row) {
+                return $row;
+            }
+        }
 
-        return $row ?: null;
-    }
-
-    private function applyOverrideRules(float $p, int $i, int $c): float
-    {
-        if ($i >= 9 && $c >= 8) {
-            return 9.0;
-        }
-        if ($c >= 9 && $i >= 7) {
-            return 8.0;
-        }
-        return $p;
-    }
-
-    private function mapScoreToPriority(float $p): string
-    {
-        if ($p >= 9) {
-            return 'urgent';
-        }
-        if ($p >= 8) {
-            return 'high';
-        }
-        if ($p >= 7) {
-            return 'regular';
-        }
-        return 'low';
+        return null;
     }
 
     /**
@@ -147,15 +106,16 @@ class SlaWeightService
     public function getDepartmentId(string $departmentName): ?int
     {
         $map = [
-            'IT' => 'Engineering',
+            'IT' => 'IT',
             'Engineering' => 'Engineering',
-            'HR' => 'Human Resource',
+            'HR' => 'HR',
             'Finance' => 'Finance',
             'Warehouse' => 'Warehouse',
             'Production' => 'Production',
             'Sales' => 'Sales',
             'Shipping' => 'Shipping',
             'Facilities' => 'Facilities',
+            'Human Resource' => 'HR',
         ];
 
         $deptName = $map[$departmentName] ?? $departmentName;
@@ -171,5 +131,10 @@ class SlaWeightService
         $stmt->close();
 
         return $row ? (int) $row['department_id'] : null;
+    }
+
+    public function normalizeCategory(string $category): string
+    {
+        return \slaNormalizeCategory($category);
     }
 }

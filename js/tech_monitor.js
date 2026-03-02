@@ -145,6 +145,9 @@ function renderTable(rows) {
             <td>
                 <span class="sla-countdown" data-sla="${safe(r.sla_date)}">--</span>
             </td>
+            <td>
+                <span class="ticket-progress text-xs text-slate-600" data-ref="${safe(r.reference_id)}">--</span>
+            </td>
 
             <td>
                 <button class="btn-details" data-ref="${safe(r.reference_id)}">View</button>
@@ -161,6 +164,8 @@ function renderTable(rows) {
             window.location.href = `view_ticket.php?ref=${encodeURIComponent(ref)}`;
         });
     });
+
+    loadProgressForVisibleRows();
 }
 
 /* ============================================================
@@ -286,4 +291,35 @@ function safe(v) {
     return String(v).replace(/[&<>"]/g, m => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"
     }[m]));
+}
+
+async function loadProgressForVisibleRows() {
+    const els = Array.from(document.querySelectorAll(".ticket-progress[data-ref]"));
+    if (!els.length) return;
+
+    const refs = els.map((el) => el.dataset.ref).filter(Boolean);
+    if (!refs.length) return;
+
+    try {
+        const url = `../php/get_ticket_progress.php?refs=${encodeURIComponent(refs.join(","))}`;
+        const res = await fetch(url, { cache: "no-store" });
+        const payload = await res.json();
+        if (!res.ok || !payload.ok) return;
+
+        els.forEach((el) => {
+            const ref = el.dataset.ref;
+            const p = payload.data?.[ref];
+            if (!p) {
+                el.textContent = "0/0 (0%)";
+                return;
+            }
+            el.textContent = `${p.completed}/${p.total} (${p.percent}%)`;
+            if ((p.percent || 0) >= 100) {
+                el.classList.remove("text-slate-600");
+                el.classList.add("text-green-700");
+            }
+        });
+    } catch (err) {
+        console.error("Progress fetch error:", err);
+    }
 }

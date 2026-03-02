@@ -16,7 +16,8 @@ window.TicketLogs = (function() {
     if (!ref) return;
     fetch(window.API_BASE + 'get_logs.php?ref=' + encodeURIComponent(ref))
       .then(r => r.json())
-      .then(list => {
+      .then(payload => {
+        const list = Array.isArray(payload) ? payload : (payload?.data?.logs || []);
         render(list || []);
       }).catch(err => {
         console.error('Failed to load logs', err);

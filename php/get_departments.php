@@ -1,21 +1,21 @@
 <?php
-include("db.php");
+require_once __DIR__ . '/ticket_api_common.php';
 
-try {
-    $sql = "SELECT department_id, department_name FROM tbl_department ORDER BY department_name";
-    $result = $conn->query($sql);
+ticketApiRequireAuth();
 
-    $departments = [];
-    while ($row = $result->fetch_assoc()) {
-        $departments[] = $row;
-    }
+$sql = "SELECT department_id, department_name FROM tbl_department ORDER BY department_name";
+$result = $conn->query($sql);
+if (!$result) {
+    ticketApiJson(['ok' => false, 'error' => 'Database query failed'], 500);
+}
 
-    echo json_encode($departments);
-
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
+$departments = [];
+while ($row = $result->fetch_assoc()) {
+    $departments[] = [
+        'department_id' => (int)$row['department_id'],
+        'department_name' => (string)$row['department_name'],
+    ];
 }
 
 $conn->close();
-?>
+ticketApiJson($departments);

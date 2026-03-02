@@ -1,48 +1,46 @@
 <?php
-require_once("db.php");
-session_start();
-header("Content-Type: application/json");
+require_once __DIR__ . '/ticket_api_common.php';
 
-if (!isset($_SESSION['id'])) {
-    echo json_encode(["ok" => false, "error" => "Unauthorized"]);
-    exit;
+$auth = ticketApiRequireAuth();
+
+$comment = trim((string)($_POST['comment'] ?? ''));
+if ($comment === '') {
+    ticketApiJson(['ok' => false, 'error' => 'Empty comment'], 400);
 }
 
-$user_id = $_SESSION['id'];
-$user_role = $_SESSION['role']; // 'technician', 'user', 'admin'
-$is_technician = ($user_role === 'technician') ? 1 : 0;
+$ticket = ticketApiResolveTicketByRef($conn, $_POST['ref'] ?? '');
+ticketApiAuthorizeTicketAccess($ticket, 'comment_ticket', $auth);
+$ticketId = (int)$ticket['ticket_id'];
 
-$ref = $_POST['ref'] ?? '';
-$comment = trim($_POST['comment'] ?? '');
+$isTechnician = $auth['role'] === 'technician' ? 1 : 0;
 
-if ($comment === "") {
-    echo json_encode(["ok" => false, "error" => "Empty comment"]);
-    exit;
-}
-
-// Fetch ticket ID
-$stmt = $conn->prepare("SELECT ticket_id FROM tbl_ticket WHERE reference_id = ?");
-$stmt->bind_param("s", $ref);
-$stmt->execute();
-$ticket = $stmt->get_result()->fetch_assoc();
-$stmt->close();
-
-if (!$ticket) {
-    echo json_encode(["ok" => false, "error" => "Ticket not found"]);
-    exit;
-}
-
-$ticket_id = $ticket['ticket_id'];
-
-// Insert comment
 $stmt = $conn->prepare("
     INSERT INTO tbl_ticket_comment (ticket_id, commenter_id, is_technician, role, comment_text)
     VALUES (?, ?, ?, ?, ?)
 ");
-$stmt->bind_param("iiiss", $ticket_id, $user_id, $is_technician, $user_role, $comment);
+if (!$stmt) {
+    ticketApiJson(['ok' => false, 'error' => 'Database prepare failed'], 500);
+}
+
+$stmt->bind_param('iiiss', $ticketId, $auth['user_id'], $isTechnician, $auth['role'], $comment);
 $ok = $stmt->execute();
+$commentId = $ok ? (int)$conn->insert_id : 0;
 $stmt->close();
 
-echo json_encode(["ok" => $ok]);
+if (!$ok) {
+    ticketApiJson(['ok' => false, 'error' => 'Failed to add comment'], 500);
+}
+
 $conn->close();
-?>
+
+ticketApiJson([
+    'ok' => true,
+    'comment' => [
+        'comment_id' => $commentId,
+        'ticket_id' => $ticketId,
+        'commenter_id' => $auth['user_id'],
+        'is_technician' => $isTechnician,
+        'role' => $auth['role'],
+        'comment_text' => $comment,
+    ],
+]);

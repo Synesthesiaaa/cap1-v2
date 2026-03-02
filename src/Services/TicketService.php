@@ -6,6 +6,7 @@ use Repositories\TicketRepository;
 use Services\LogService;
 use Services\Logger;
 use Database\Connection;
+require_once __DIR__ . '/../../config/sla_automation_rules.php';
 
 /**
  * Ticket Service
@@ -36,15 +37,23 @@ class TicketService
             $category = $data['category'] ?? '';
             $type = $data['type'] ?? $data['ticket_type'] ?? '';
             $userType = $data['user_type'] ?? 'internal';
+            $slaResult = null;
 
             // SLA Weight: compute priority and auto-assign
-            if (!isset($data['priority']) && $category && $type) {
-                $slaResult = $this->computeSlaPriority($category, $type, $userType, $data);
-                if ($slaResult) {
+            if ($category && $type) {
+                $slaResult = $this->computeSlaPriority($category, $type, $userType);
+                if ($slaResult && !empty($slaResult['sla_weight'])) {
                     $data['priority'] = $slaResult['priority'];
+                    if (!empty($slaResult['matched_sla_weight_id']) && $this->ticketColumnExists('sla_weight_id')) {
+                        $data['sla_weight_id'] = (int)$slaResult['matched_sla_weight_id'];
+                    }
+                    if (isset($slaResult['priority_score']) && $this->ticketColumnExists('sla_priority_score')) {
+                        $data['sla_priority_score'] = (float)$slaResult['priority_score'];
+                    }
                     if (!isset($data['assigned_technician_id']) && $slaResult['department_name']) {
                         $data['_sla_department'] = $slaResult['department_name'];
                     }
+                    $data['_sla_priority_score'] = (float)$slaResult['priority_score'];
                 }
             }
 
@@ -79,8 +88,22 @@ class TicketService
                 $data['status'] = $data['assigned_technician_id'] ? 'pending' : 'assigning';
             }
 
+            $checklistOptions = [
+                'priority' => $data['priority'] ?? 'low',
+                'priority_score' => $data['_sla_priority_score'] ?? ($data['sla_priority_score'] ?? null),
+                'user_type' => $userType,
+                'sla_weight_id' => $data['sla_weight_id'] ?? null,
+                'normalized_category' => $slaResult['normalized_category'] ?? $category,
+            ];
+
             // Remove internal flags and non-DB fields before insert
-            unset($data['_sla_department'], $data['is_urgent'], $data['user_type'], $data['ticket_type']);
+            unset(
+                $data['_sla_department'],
+                $data['_sla_priority_score'],
+                $data['is_urgent'],
+                $data['user_type'],
+                $data['ticket_type']
+            );
 
             // Create ticket
             $ticketId = $this->ticketRepository->create($data);
@@ -102,7 +125,7 @@ class TicketService
 
                 // Auto-generate checklist if needed
                 if (isset($data['category'])) {
-                    $this->autoGenerateChecklist($ticketId, $data['category'], $data['type'] ?? null);
+                    $this->autoGenerateChecklist($ticketId, $data['category'], $data['type'] ?? null, $checklistOptions);
                 }
 
                 $this->refreshSummaryForTicket((int)$ticketId, $userId);
@@ -258,7 +281,7 @@ class TicketService
     /**
      * Compute priority from SLA Weight table (auto-assigns)
      */
-    private function computeSlaPriority(string $category, string $type, string $userType, array $ticketData): ?array
+    private function computeSlaPriority(string $category, string $type, string $userType): ?array
     {
         try {
             if (class_exists(\Services\SlaWeightService::class)) {
@@ -267,6 +290,12 @@ class TicketService
                 if ($result['sla_weight']) {
                     return $result;
                 }
+                $this->logger->warning("No SLA mapping found for ticket create", [
+                    'type' => $type,
+                    'category' => $category,
+                    'normalized_category' => $result['normalized_category'] ?? $category,
+                    'user_type' => $userType
+                ]);
             }
         } catch (\Exception $e) {
             $this->logger->warning("SLA Weight lookup failed", ['error' => $e->getMessage()]);
@@ -324,22 +353,7 @@ class TicketService
      */
     private function calculateSlaDate(string $priority): string
     {
-        switch ($priority) {
-            case 'urgent':
-                $days = 1;
-                break;
-            case 'high':
-                $days = 1;
-                break;
-            case 'regular':
-                $days = 3;
-                break;
-            case 'low':
-            default:
-                $days = 7;
-                break;
-        }
-
+        $days = \slaPrioritySlaDays($priority);
         return date('Y-m-d', strtotime("+{$days} days"));
     }
 
@@ -469,14 +483,47 @@ class TicketService
     /**
      * Auto-generate checklist from template
      */
-    private function autoGenerateChecklist(int $ticketId, string $category, ?string $type): void
+    private function autoGenerateChecklist(int $ticketId, string $category, ?string $type, array $options = []): void
     {
-        // This would integrate with existing auto_generate_checklist.php
-        // For now, just log that it should be called
-        $this->logger->info("Checklist generation needed", [
-            'ticket_id' => $ticketId,
-            'category' => $category
-        ]);
+        try {
+            $script = __DIR__ . '/../../php/auto_generate_checklist.php';
+            if (!file_exists($script)) {
+                return;
+            }
+
+            require_once $script;
+            if (!function_exists('autoGenerateChecklist')) {
+                return;
+            }
+
+            $departmentId = null;
+            if (!empty($type)) {
+                $deptMap = [
+                    'Human Resource' => 'HR',
+                ];
+                $departmentName = $deptMap[$type] ?? $type;
+
+                $stmt = $this->conn->prepare("SELECT department_id FROM tbl_department WHERE department_name = ? LIMIT 1");
+                if ($stmt) {
+                    $stmt->bind_param("s", $departmentName);
+                    $stmt->execute();
+                    $row = $stmt->get_result()->fetch_assoc();
+                    $stmt->close();
+                    if ($row) {
+                        $departmentId = (int)$row['department_id'];
+                    }
+                }
+            }
+
+            autoGenerateChecklist($this->conn, $ticketId, $category, $departmentId, $options);
+        } catch (\Throwable $e) {
+            $this->logger->warning("Checklist generation failed", [
+                'ticket_id' => $ticketId,
+                'category' => $category,
+                'type' => $type,
+                'error' => $e->getMessage()
+            ]);
+        }
     }
 
     /**
@@ -501,6 +548,35 @@ class TicketService
                 'user_id' => $userId,
                 'error' => $e->getMessage()
             ]);
+        }
+    }
+
+    /**
+     * Check whether tbl_ticket has a given column.
+     */
+    private function ticketColumnExists(string $column): bool
+    {
+        static $cache = [];
+        if (array_key_exists($column, $cache)) {
+            return $cache[$column];
+        }
+
+        try {
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM tbl_ticket LIKE ?");
+            if (!$stmt) {
+                $cache[$column] = false;
+                return false;
+            }
+            $stmt->bind_param("s", $column);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            $exists = $res && $res->num_rows > 0;
+            $stmt->close();
+            $cache[$column] = $exists;
+            return $exists;
+        } catch (\Throwable $e) {
+            $cache[$column] = false;
+            return false;
         }
     }
 }

@@ -14,7 +14,7 @@ if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SLA Weight — Interconnect Solutions Company</title>
+  <title>SLA Weight - Interconnect Solutions Company</title>
   <link rel="stylesheet" href="../css/theme.css">
   <link rel="stylesheet" href="../css/components.css">
   <link rel="stylesheet" href="../css/basicTemp.css">
@@ -30,7 +30,7 @@ if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
       <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
         <div>
           <h1 class="text-3xl font-extrabold text-gray-900">SLA Weight Table</h1>
-          <p class="text-sm text-gray-500 mt-1">P = (0.5×I) + (0.3×C) + (0.2×(T)) — drives priority and auto-assign</p>
+          <p class="text-sm text-gray-500 mt-1">P = (0.5*I) + (0.3*C) + (0.2*(11-T)) - drives priority and auto-assign</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <input id="searchInput" type="search" placeholder="Search category..." class="h-10 px-3 rounded-lg border border-slate-200 text-sm w-48" />

@@ -5,6 +5,9 @@ if (!isset($_SESSION['id'])) {
     exit();
 }
 
+$user_role = (string)($_SESSION['role'] ?? 'user');
+$is_staff_role = in_array($user_role, ['technician', 'department_head', 'admin'], true);
+
 // Include database connection
 include("../php/db.php");
 
@@ -24,7 +27,14 @@ $stmt->bind_param("s", $ticket_ref);
 $stmt->execute();
 $ticket = $stmt->get_result()->fetch_assoc();
 
+$viewer_id = (int)($_SESSION['id'] ?? 0);
+if ($ticket && !$is_staff_role && (int)$ticket['user_id'] !== $viewer_id) {
+    $ticket = null;
+}
+
 $ticket_not_found = !$ticket;
+$can_manage_status = !$ticket_not_found && $is_staff_role;
+$can_view_logs = $can_manage_status;
 
 // Fetch ticket replies only if ticket exists
 $replies_result = null;
@@ -163,9 +173,11 @@ $replies_query = "SELECT r.*,
             <h1 class="text-2xl font-semibold text-gray-900"><?php echo htmlspecialchars($ticket['title'] ?: 'No Title'); ?></h1>
             <div class="text-sm text-gray-500 mt-1"><?php echo htmlspecialchars(ucfirst($ticket['status'])); ?> • Created <?php echo htmlspecialchars($ticket['created_at'] ? date('d F, Y', strtotime($ticket['created_at'])) : 'Unknown'); ?></div>
           </div>
+          <?php if ($can_manage_status): ?>
           <div class="hidden md:flex items-center space-x-3">
-            <button id="quickResolve" class="bg-brand-700 hover:bg-brand-900 text-white px-4 py-2 rounded shadow text-sm">✓ Complete</button>
+            <button id="quickResolve" class="bg-brand-700 hover:bg-brand-900 text-white px-4 py-2 rounded shadow text-sm">Complete</button>
           </div>
+          <?php endif; ?>
         </div>
 
         <!-- Ticket Details card -->
@@ -364,6 +376,7 @@ $replies_query = "SELECT r.*,
         </div>
 
         <!-- Logs -->
+        <?php if ($can_view_logs): ?>
         <div class="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
           <h4 class="text-base font-medium text-gray-800 mb-3">Logs</h4>
 
@@ -371,14 +384,42 @@ $replies_query = "SELECT r.*,
             <!-- Logs will be loaded dynamically -->
           </div>
         </div>
+        <?php endif; ?>
+
+        <!-- Checklist Progress -->
+        <div class="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+          <h4 class="text-base font-medium text-gray-800 mb-3">Checklist</h4>
+          <div class="mb-3">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs text-gray-500">Progress</span>
+              <span id="checklistProgressText" class="text-xs text-gray-600">0/0 (0%)</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2">
+              <div id="checklistProgressBar" class="bg-brand-700 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+            </div>
+          </div>
+
+          <div id="checklistContainer" class="space-y-2 text-sm"></div>
+
+          <div class="mt-3 flex gap-2">
+            <input id="newChecklist" class="w-full border border-gray-200 rounded p-2 text-sm" placeholder="Add checklist item">
+            <label id="newChecklistRequiredWrap" class="hidden items-center gap-1 text-xs text-gray-600 whitespace-nowrap">
+              <input type="checkbox" id="newChecklistRequired" class="rounded border-gray-300">
+              Required
+            </label>
+            <button id="addChecklistBtn" class="bg-brand-700 hover:bg-brand-900 text-white text-sm px-3 py-2 rounded">Add</button>
+          </div>
+        </div>
 
         <!-- Quick actions -->
+        <?php if ($can_manage_status): ?>
         <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm flex items-center justify-between">
           <div class="text-sm text-gray-700">Status: <span id="statusLabel" class="font-medium text-brand-700 ml-1"><?php echo htmlspecialchars(ucfirst($ticket['status'])); ?></span></div>
           <div>
             <button id="toggleResolveSmall" class="text-sm bg-gray-50 px-3 py-1 rounded border border-gray-200"><?php echo htmlspecialchars($ticket['status'] === 'complete' ? 'Reopen' : 'Mark Complete'); ?></button>
           </div>
         </div>
+        <?php endif; ?>
 
       </aside>
     </div>
@@ -391,11 +432,19 @@ $replies_query = "SELECT r.*,
     const replyInput = document.getElementById('replyInput');
     const conversation = document.getElementById('conversation');
     const logs = document.getElementById('logs');
-    const escalateForm = document.getElementById('escalateForm');
     const quickResolve = document.getElementById('quickResolve');
     const toggleResolveSmall = document.getElementById('toggleResolveSmall');
     const statusLabel = document.getElementById('statusLabel');
+    const checklistContainer = document.getElementById('checklistContainer');
+    const checklistProgressText = document.getElementById('checklistProgressText');
+    const checklistProgressBar = document.getElementById('checklistProgressBar');
+    const newChecklist = document.getElementById('newChecklist');
+    const addChecklistBtn = document.getElementById('addChecklistBtn');
+    const newChecklistRequired = document.getElementById('newChecklistRequired');
+    const newChecklistRequiredWrap = document.getElementById('newChecklistRequiredWrap');
     const ticketRef = '<?php echo htmlspecialchars($ticket_ref, ENT_QUOTES); ?>';
+    const canManageStatus = <?php echo $can_manage_status ? 'true' : 'false'; ?>;
+    const canViewLogs = <?php echo $can_view_logs ? 'true' : 'false'; ?>;
 
     let isCompleted = '<?php echo $ticket['status']; ?>' === 'complete';
 
@@ -466,7 +515,102 @@ $replies_query = "SELECT r.*,
       wrapper.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
 
+    async function loadConversation() {
+      if (!conversation || !ticketRef) return;
+
+      try {
+        const response = await fetch(`../php/get_reply.php?ref=${encodeURIComponent(ticketRef)}&t=${Date.now()}`, { cache: 'no-store' });
+        let data = {};
+
+        try {
+          data = await response.json();
+        } catch (jsonErr) {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
+
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || `Request failed: ${response.status}`);
+        }
+
+        const replies = Array.isArray(data.replies) ? data.replies : [];
+        conversation.innerHTML = '';
+
+        if (!replies.length) {
+          conversation.innerHTML = `
+            <div class="text-center py-8">
+              <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                </svg>
+              </div>
+              <h3 class="text-lg font-medium text-gray-900 mb-2">Start the conversation</h3>
+              <p class="text-gray-500 mb-4">Be the first to send a message. Share details, ask questions, or provide updates about this ticket.</p>
+              <div class="inline-flex items-center px-3 py-1 rounded-full bg-brand-50 text-brand-700 text-sm">
+                Ready to send your first reply
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        replies.forEach((reply) => {
+          const sender = String(reply.sender || 'Unknown User');
+          const repliedBy = String(reply.replied_by || 'user');
+          const roleLabel = repliedBy === 'technician' ? 'Support Agent' : (repliedBy === 'system' ? 'System' : 'Customer');
+          const initials = repliedBy === 'system'
+            ? 'SYS'
+            : sender.split(' ').map((part) => part[0]).join('').substring(0, 2).toUpperCase() || 'UN';
+          const colorClass = repliedBy === 'technician'
+            ? 'bg-brand-900 text-white'
+            : (repliedBy === 'system' ? 'bg-gray-100 text-gray-600' : 'bg-gray-200 text-gray-700');
+
+          let attachmentHtml = '';
+          if (reply.attachment_path) {
+            attachmentHtml = `
+              <div class="mt-2">
+                <a href="../${escapeHtml(reply.attachment_path)}" target="_blank" class="inline-flex items-center text-blue-600 hover:text-blue-800 text-sm">
+                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
+                  </svg>
+                  View Attachment
+                </a>
+              </div>
+            `;
+          }
+
+          const item = document.createElement('div');
+          item.className = 'flex items-start space-x-3';
+          item.innerHTML = `
+            <div class="w-10 h-10 ${colorClass} flex items-center justify-center text-sm font-semibold rounded-full flex-shrink-0">
+              ${escapeHtml(initials)}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-baseline justify-between mb-1">
+                <div class="text-sm font-semibold text-gray-900 truncate">
+                  ${escapeHtml(sender)}
+                  <span class="text-xs text-gray-500 font-normal ml-1">${escapeHtml(roleLabel)}</span>
+                </div>
+                <div class="text-xs text-gray-500 flex-shrink-0 ml-2">
+                  ${escapeHtml(reply.created_at || '')}
+                </div>
+              </div>
+              <div class="text-sm text-gray-700 leading-relaxed break-words">
+                ${escapeHtml(reply.message || '').replace(/\n/g, '<br>')}
+              </div>
+              ${attachmentHtml}
+            </div>
+          `;
+
+          conversation.appendChild(item);
+        });
+      } catch (error) {
+        console.error('Error loading conversation:', error);
+        showToast('Failed to load conversation: ' + error.message, 'error');
+      }
+    }
+
     function appendLog(name, message, tag, tagColorClass = 'bg-blue-100 text-blue-800') {
+      if (!logs) return;
       const entry = document.createElement('div');
       entry.className = 'flex items-start space-x-3';
       entry.innerHTML = `
@@ -485,7 +629,8 @@ $replies_query = "SELECT r.*,
 
     // Function to load logs from database
     function loadLogs() {
-      fetch(`../php/get_logs.php?ref=${ticketRef}`)
+      if (!canViewLogs || !logs || !ticketRef) return;
+      fetch(`../php/get_logs.php?ref=${encodeURIComponent(ticketRef)}`)
         .then(response => response.json())
         .then(data => {
           if (data.ok) {
@@ -573,13 +718,153 @@ $replies_query = "SELECT r.*,
         });
     }
 
+    function renderChecklistProgress(progress) {
+      const p = progress || { completed: 0, total: 0, percent: 0 };
+      if (checklistProgressText) {
+        checklistProgressText.textContent = `${p.completed || 0}/${p.total || 0} (${p.percent || 0}%)`;
+      }
+      if (checklistProgressBar) {
+        checklistProgressBar.style.width = `${p.percent || 0}%`;
+      }
+    }
+
+    function renderChecklistItems(items, canToggle) {
+      if (!checklistContainer) return;
+      checklistContainer.innerHTML = '';
+
+      if (!Array.isArray(items) || items.length === 0) {
+        checklistContainer.innerHTML = '<div class="text-xs text-gray-500">No checklist items.</div>';
+        return;
+      }
+
+      items.forEach((item) => {
+        const checked = (item.is_completed == 1 || item.is_completed === true) ? 'checked' : '';
+        const disabled = canToggle ? '' : 'disabled';
+        const line = checked ? 'line-through text-gray-400' : 'text-gray-700';
+        const source = item.source_type ? ` [${item.source_type}]` : '';
+        const createdAt = item.created_at || '';
+        const canDelete = item.can_delete ? '' : 'hidden';
+
+        const html = `
+          <div class="flex items-start justify-between gap-2 pb-2 border-b border-gray-100">
+            <label class="flex items-start gap-2 min-w-0 flex-1">
+              <input type="checkbox" class="mt-1 checklist-toggle" data-id="${item.item_id}" ${checked} ${disabled}>
+              <div class="min-w-0">
+                <p class="${line} text-sm break-words">${escapeHtml(item.description || '')}</p>
+                <p class="text-xs text-gray-500">${escapeHtml(createdAt)}${escapeHtml(source)}</p>
+              </div>
+            </label>
+            <button type="button" class="checklist-delete text-xs text-red-600 hover:text-red-700 ${canDelete}" data-id="${item.item_id}">Delete</button>
+          </div>
+        `;
+        checklistContainer.insertAdjacentHTML('beforeend', html);
+      });
+
+      if (canToggle) {
+        checklistContainer.querySelectorAll('.checklist-toggle').forEach((el) => {
+          el.addEventListener('change', async (e) => {
+            const itemId = e.currentTarget.dataset.id;
+            const completed = e.currentTarget.checked ? 1 : 0;
+            try {
+              const body = new URLSearchParams();
+              body.append('item_id', itemId);
+              body.append('completed', completed);
+              const res = await fetch('../php/toggle_checklist_item.php', { method: 'POST', body });
+              const json = await res.json();
+              if (!json.ok) throw new Error(json.error || 'Toggle failed');
+              await loadChecklist();
+            } catch (err) {
+              console.error('Checklist toggle failed:', err);
+              showToast('Failed to update checklist item.', 'error');
+              await loadChecklist();
+            }
+          });
+        });
+      }
+
+      checklistContainer.querySelectorAll('.checklist-delete').forEach((el) => {
+        el.addEventListener('click', async (e) => {
+          const itemId = e.currentTarget.dataset.id;
+          if (!itemId) return;
+          if (!confirm('Delete this checklist item?')) return;
+          try {
+            const body = new URLSearchParams();
+            body.append('item_id', itemId);
+            const res = await fetch('../php/delete_checklist_item.php', { method: 'POST', body });
+            const payload = await res.json();
+            if (!res.ok || !payload.ok) throw new Error(payload.error || 'Delete failed');
+            await loadChecklist();
+          } catch (err) {
+            console.error('Checklist delete failed:', err);
+            showToast('Failed to delete checklist item.', 'error');
+            await loadChecklist();
+          }
+        });
+      });
+    }
+
+    async function loadChecklist() {
+      if (!ticketRef) return;
+      try {
+        const res = await fetch(`../php/get_checklist.php?ref=${encodeURIComponent(ticketRef)}`, { cache: 'no-store' });
+        const payload = await res.json();
+        if (!res.ok || !payload.ok) throw new Error(payload.error || 'Checklist fetch failed');
+
+        const canEdit = !!(payload.permissions && payload.permissions.can_edit);
+        const canSetRequired = !!(payload.permissions && payload.permissions.can_set_required);
+        if (newChecklist) newChecklist.disabled = !canEdit;
+        if (addChecklistBtn) addChecklistBtn.disabled = !canEdit;
+        if (newChecklistRequired) newChecklistRequired.disabled = !canEdit || !canSetRequired;
+        if (newChecklistRequiredWrap) {
+          newChecklistRequiredWrap.classList.toggle('hidden', !canSetRequired);
+          newChecklistRequiredWrap.classList.toggle('flex', canSetRequired);
+        }
+
+        renderChecklistProgress(payload.progress);
+        renderChecklistItems(payload.items || [], !!(payload.permissions && payload.permissions.can_toggle));
+      } catch (err) {
+        console.error('Checklist load failed:', err);
+        if (checklistContainer) {
+          checklistContainer.innerHTML = '<div class="text-xs text-red-500">Failed to load checklist.</div>';
+        }
+        renderChecklistProgress({ completed: 0, total: 0, percent: 0 });
+      }
+    }
+
+    async function addChecklistItem() {
+      if (!newChecklist || !addChecklistBtn || newChecklist.disabled) return;
+      const description = (newChecklist.value || '').trim();
+      if (!description) {
+        showToast('Enter a checklist item first.', 'warning');
+        return;
+      }
+      try {
+        const body = new URLSearchParams();
+        body.append('ref', ticketRef);
+        body.append('description', description);
+        if (newChecklistRequired && !newChecklistRequired.disabled) {
+          body.append('is_required', newChecklistRequired.checked ? '1' : '0');
+        }
+        const res = await fetch('../php/add_checklist_item.php', { method: 'POST', body });
+        const payload = await res.json();
+        if (!res.ok || !payload.ok) throw new Error(payload.error || 'Add failed');
+        newChecklist.value = '';
+        if (newChecklistRequired) newChecklistRequired.checked = false;
+        await loadChecklist();
+        showToast('Checklist item added.', 'success');
+      } catch (err) {
+        console.error('Checklist add failed:', err);
+        showToast('Failed to add checklist item.', 'error');
+      }
+    }
+
     function escapeHtml(text) {
       if (typeof text !== 'string') return text;
       return text
-        .replace(/&/g, '&')
-        .replace(/</g, '<')
-        .replace(/>/g, '>')
-        .replace(/"/g, '"')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
     }
 
@@ -630,9 +915,6 @@ $replies_query = "SELECT r.*,
 
     if (replyForm) {
       replyForm.addEventListener('submit', (e) => {
-      // #region agent log
-      fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:632',message:'Reply form submit event',data:{ticketRef,url:window.location.href,hasRef:!!ticketRef},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       e.preventDefault();
       const text = replyInput.value.trim();
       const attachmentFile = document.getElementById('replyAttachment').files[0];
@@ -660,27 +942,15 @@ $replies_query = "SELECT r.*,
         formData.append('replyAttachment', attachmentFile);
       }
 
-      // #region agent log
-      fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:660',message:'Before fetch post_reply',data:{ticketRef,textLength:text.length,hasAttachment:!!attachmentFile},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       fetch('../php/post_reply.php', {
         method: 'POST',
         body: formData
       })
       .then(async response => {
-        // #region agent log
-        fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:664',message:'Response received',data:{status:response.status,statusText:response.statusText,ok:response.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
         let data;
         try {
           data = await response.json();
-          // #region agent log
-          fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:667',message:'Response parsed',data:{ok:data?.ok,hasError:!!data?.error,error:data?.error?.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
         } catch (e) {
-          // #region agent log
-          fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:669',message:'JSON parse error',data:{error:e.message,status:response.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
           // If response.json() fails, create a fallback error object
           data = {
             ok: false,
@@ -694,22 +964,17 @@ $replies_query = "SELECT r.*,
 
         return data;
       })
-      .then(data => {
+      .then(async data => {
         console.log('Reply response:', data);
-        // #region agent log
-        fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:682',message:'Success handler',data:{ok:data?.ok,hasReply:!!data?.reply,currentUrl:window.location.href},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
-        if (data.ok && data.reply) {
+        if (data.ok) {
           // Clear the input
           replyInput.value = '';
           document.getElementById('replyAttachment').value = '';
           document.getElementById('fileName').classList.add('hidden');
           document.getElementById('fileName').textContent = '';
 
-          // Add the new reply to the conversation immediately
-          const replyData = data.reply;
-          const userInitials = replyData.sender.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-          appendMessage(userInitials, replyData.sender, 'Customer', replyData.message, replyData.attachment_path);
+          // Refresh conversation from server truth
+          await loadConversation();
 
           // Show success feedback
           showToast('Reply sent successfully!', 'success');
@@ -718,9 +983,6 @@ $replies_query = "SELECT r.*,
         }
       })
       .catch(error => {
-        // #region agent log
-        fetch('http://127.0.0.1:1024/ingest/5d971f71-17f9-47f1-b0db-558281b6e241',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cust_ticket.php:702',message:'Reply error caught',data:{error:error.message,currentUrl:window.location.href},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         console.error('Reply error:', error);
         showToast('Failed to send reply: ' + error.message, 'error');
       })
@@ -765,94 +1027,12 @@ $replies_query = "SELECT r.*,
     });
     }
 
-    if (escalateForm) {
-      escalateForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const reason = document.getElementById('escalateReason').value.trim();
-      const to = document.getElementById('escalateTo').value;
-      const note = document.getElementById('escalateNote').value.trim();
-
-      if (!reason) {
-        showToast('Please provide an escalation reason.', 'warning');
+    function toggleResolve() {
+      if (!canManageStatus) {
+        showToast('You do not have permission to update ticket status.', 'error');
         return;
       }
 
-      // Disable form while submitting
-      const submitBtn = escalateForm.querySelector('button[type="submit"]');
-      const originalText = submitBtn.textContent;
-      submitBtn.textContent = 'Escalating...';
-      submitBtn.disabled = true;
-
-      // Map escalation targets to department IDs (you may need to adjust these IDs based on your department table)
-      const departmentMapping = {
-        'Tier 2 Support': 4,    // IT Department
-        'Engineering': 5,       // Engineering
-        'Manager': 6,           // Management
-        'Security Team': 7      // Security
-      };
-
-      const newDepartmentId = departmentMapping[to] || 4; // Default to IT
-
-      // Send escalation request
-      fetch('../php/escalate_ticket.php', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          ref: ticketRef,
-          reason: reason,
-          new_department_id: newDepartmentId,
-          note: note
-        })
-      })
-      .then(async response => {
-        let data;
-        try {
-          data = await response.json();
-        } catch (e) {
-          data = {
-            ok: false,
-            error: 'Server error: ' + response.status + ' ' + response.statusText
-          };
-        }
-
-        if (!response.ok) {
-          throw new Error(data.error || 'HTTP error! status: ' + response.status);
-        }
-
-        return data;
-      })
-      .then(data => {
-        console.log('Escalation response:', data);
-        if (data.ok) {
-          // Add log entry for successful escalation
-          const message = `Escalated to ${to}. Reason: ${reason}${note ? ' — Note: ' + note : ''}`;
-          appendLog('You', message, 'Escalated', 'bg-red-100 text-red-800');
-
-          // Clear fields
-          document.getElementById('escalateReason').value = '';
-          document.getElementById('escalateNote').value = '';
-
-          // Show success feedback
-          showToast('Ticket escalated successfully!', 'success');
-        } else {
-          showToast('Error escalating ticket: ' + (data.error || 'Unknown error'), 'error');
-        }
-      })
-      .catch(error => {
-        console.error('Escalation error:', error);
-        showToast('Failed to escalate ticket: ' + error.message, 'error');
-      })
-      .finally(() => {
-        // Re-enable form
-        submitBtn.textContent = originalText;
-        submitBtn.disabled = false;
-      });
-    });
-    }
-
-    function toggleResolve() {
       // Toggle complete/reopen via AJAX
       const action = isCompleted ? 'reopen' : 'complete';
       if (confirm(`Are you sure you want to ${action} this ticket?`)) {
@@ -894,6 +1074,21 @@ $replies_query = "SELECT r.*,
       toggleResolveSmall.addEventListener('click', toggleResolve);
     }
 
+    if (addChecklistBtn) {
+      addChecklistBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        addChecklistItem();
+      });
+    }
+    if (newChecklist) {
+      newChecklist.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          addChecklistItem();
+        }
+      });
+    }
+
     // Keyboard shortcut Ctrl+Enter to send reply
     if (replyInput && replyForm) {
       replyInput.addEventListener('keydown', (e) => {
@@ -906,10 +1101,15 @@ $replies_query = "SELECT r.*,
 
     // Load logs when page loads
     if (ticketRef) {
-      loadLogs();
+      loadConversation();
+      if (canViewLogs) {
+        loadLogs();
+      }
+      loadChecklist();
     }
 
   </script>
   <?php endif; ?>
       </body>
 </Html>
+

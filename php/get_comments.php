@@ -1,41 +1,26 @@
 <?php
-require_once "db.php";
-header("Content-Type: application/json");
+require_once __DIR__ . '/ticket_api_common.php';
 
-// Validate reference ID
-$ref = $_GET['ref'] ?? '';
-if (!$ref) {
-    echo json_encode([]);
-    exit;
+$auth = ticketApiRequireAuth();
+$ticket = ticketApiResolveTicketByRef($conn, $_GET['ref'] ?? '');
+ticketApiAuthorizeTicketAccess($ticket, 'read_ticket', $auth);
+$ticketId = (int)$ticket['ticket_id'];
+
+$stmt = $conn->prepare("
+    SELECT comment_id, ticket_id, commenter_id, is_technician, role, comment_text, created_at
+    FROM tbl_ticket_comment
+    WHERE ticket_id = ?
+    ORDER BY created_at ASC, comment_id ASC
+");
+if (!$stmt) {
+    ticketApiJson(['ok' => false, 'error' => 'Database prepare failed'], 500);
 }
 
-// Get ticket_id
-$stmt = $conn->prepare("SELECT ticket_id FROM tbl_ticket WHERE reference_id = ?");
-$stmt->bind_param("s", $ref);
+$stmt->bind_param('i', $ticketId);
 $stmt->execute();
-$res = $stmt->get_result()->fetch_assoc();
-$stmt->close();
-
-if (!$res) {
-    echo json_encode([]);
-    exit;
-}
-
-$ticket_id = $res['ticket_id'];
-
-// Fetch comments
-$sql = "SELECT comment_id, ticket_id, commenter_id, is_technician, role, comment_text, created_at
-        FROM tbl_ticket_comment
-        WHERE ticket_id = ?
-        ORDER BY created_at ASC";
-
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("i", $ticket_id);
-$stmt->execute();
-
 $result = $stmt->get_result();
-$comments = [];
 
+$comments = [];
 while ($row = $result->fetch_assoc()) {
     $comments[] = $row;
 }
@@ -43,5 +28,11 @@ while ($row = $result->fetch_assoc()) {
 $stmt->close();
 $conn->close();
 
-echo json_encode($comments);
-?>
+ticketApiJson([
+    'ok' => true,
+    'ticket' => [
+        'ticket_id' => $ticketId,
+        'reference_id' => $ticket['reference_id'],
+    ],
+    'comments' => $comments,
+]);

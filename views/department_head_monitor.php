@@ -92,11 +92,12 @@ $departmentHeadName = $_SESSION['name'];
             <th class="sortable cursor-pointer hover:bg-gray-50 px-2 py-2" data-column="urgency">Urgency<span class="sort-arrow ml-1">↕</span></th>
             <th class="sortable cursor-pointer hover:bg-gray-50 px-2 py-2" data-column="status">Status<span class="sort-arrow ml-1">↕</span></th>
             <th class="sortable cursor-pointer hover:bg-gray-50 px-2 py-2" data-column="created_at">Created<span class="sort-arrow ml-1">↕</span></th>
+            <th class="px-2 py-2">Progress</th>
             <th>Action</th>
           </tr>
         </thead>
         <tbody id="ticketsBody" class="text-gray-700">
-          <tr><td colspan="9" class="text-center py-6 text-gray-500">Loading tickets...</td></tr>
+          <tr><td colspan="10" class="text-center py-6 text-gray-500">Loading tickets...</td></tr>
         </tbody>
       </table>
     </div>
@@ -109,3 +110,4 @@ $departmentHeadName = $_SESSION['name'];
   <script src="../js/department_head_monitor.js"></script>
 </body>
 </html>
+

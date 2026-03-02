@@ -45,4 +45,30 @@ $result = $stmt->get_result();
 $rows = $result->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-echo json_encode(['success' => true, 'data' => $rows]);
+$payload = ['success' => true, 'data' => $rows];
+
+if (isset($_GET['include_unmatched']) && $_GET['include_unmatched'] === '1') {
+    $unmatched = [];
+    $sqlUnmatched = "
+        SELECT t.type, t.category, COUNT(*) AS ticket_count
+        FROM tbl_ticket t
+        LEFT JOIN tbl_sla_weight s
+            ON s.department_name = t.type
+           AND s.category = t.category
+        WHERE t.status <> 'complete'
+          AND s.sla_weight_id IS NULL
+        GROUP BY t.type, t.category
+        ORDER BY ticket_count DESC
+        LIMIT 50
+    ";
+    $resUnmatched = $conn->query($sqlUnmatched);
+    if ($resUnmatched) {
+        while ($row = $resUnmatched->fetch_assoc()) {
+            $unmatched[] = $row;
+        }
+        $resUnmatched->free();
+    }
+    $payload['unmatched_mappings'] = $unmatched;
+}
+
+echo json_encode($payload);

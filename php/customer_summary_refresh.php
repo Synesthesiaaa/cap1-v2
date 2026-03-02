@@ -35,23 +35,16 @@ if (!function_exists('refreshUserTicketSummary')) {
                 urgent_high_count
             )
             SELECT
-                u.user_id,
+                seed.user_id,
                 COALESCE(agg.ticket_count, 0) AS ticket_count,
                 agg.last_contact,
                 agg.success_rate,
-                agg.sla_status,
-                (
-                    SELECT t2.status
-                    FROM tbl_ticket t2
-                    WHERE t2.user_id = u.user_id
-                    ORDER BY t2.created_at DESC, t2.ticket_id DESC
-                    LIMIT 1
-                ) AS current_ticket_status,
+                COALESCE(agg.sla_status, 'On Track') AS sla_status,
+                latest.status AS current_ticket_status,
                 COALESCE(agg.urgent_high_count, 0) AS urgent_high_count
-            FROM tbl_user u
+            FROM (SELECT ? AS user_id) seed
             LEFT JOIN (
                 SELECT
-                    t.user_id,
                     COUNT(*) AS ticket_count,
                     MAX(t.created_at) AS last_contact,
                     ROUND(
@@ -59,16 +52,21 @@ if (!function_exists('refreshUserTicketSummary')) {
                         1
                     ) AS success_rate,
                     CASE
-                        WHEN SUM(CASE WHEN t.sla_date < CURDATE() AND t.status != 'complete' THEN 1 ELSE 0 END) > 0 THEN 'At Risk'
-                        WHEN SUM(CASE WHEN t.sla_date >= CURDATE() AND t.sla_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY) AND t.status != 'complete' THEN 1 ELSE 0 END) > 0 THEN 'Approaching'
+                        WHEN SUM(CASE WHEN t.sla_date < CURDATE() AND t.status <> 'complete' THEN 1 ELSE 0 END) > 0 THEN 'At Risk'
+                        WHEN SUM(CASE WHEN t.sla_date >= CURDATE() AND t.sla_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY) AND t.status <> 'complete' THEN 1 ELSE 0 END) > 0 THEN 'Approaching'
                         ELSE 'On Track'
                     END AS sla_status,
                     SUM(CASE WHEN t.priority IN ('urgent', 'high') THEN 1 ELSE 0 END) AS urgent_high_count
                 FROM tbl_ticket t
                 WHERE t.user_id = ?
-                GROUP BY t.user_id
-            ) agg ON agg.user_id = u.user_id
-            WHERE u.user_id = ?
+            ) agg ON 1 = 1
+            LEFT JOIN (
+                SELECT t2.status
+                FROM tbl_ticket t2
+                WHERE t2.user_id = ?
+                ORDER BY t2.created_at DESC, t2.ticket_id DESC
+                LIMIT 1
+            ) latest ON 1 = 1
             ON DUPLICATE KEY UPDATE
                 ticket_count = VALUES(ticket_count),
                 last_contact = VALUES(last_contact),
@@ -84,7 +82,7 @@ if (!function_exists('refreshUserTicketSummary')) {
             return false;
         }
 
-        $stmt->bind_param('ii', $userId, $userId);
+        $stmt->bind_param('iii', $userId, $userId, $userId);
         $ok = $stmt->execute();
         $stmt->close();
 

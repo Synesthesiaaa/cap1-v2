@@ -1,48 +1,68 @@
 <?php
 require_once "db.php";
+require_once "checklist_common.php";
 header("Content-Type: application/json");
+
+if (!isset($_SESSION['id'])) {
+    http_response_code(401);
+    echo json_encode([
+        "ok" => false,
+        "error" => "Unauthorized"
+    ]);
+    exit;
+}
 
 // Validate reference ID
 $ref = $_GET['ref'] ?? '';
 if (!$ref) {
-    echo json_encode([]);
+    echo json_encode([
+        "ok" => false,
+        "error" => "Missing ticket reference"
+    ]);
     exit;
 }
 
-// Get ticket_id
-$stmt = $conn->prepare("SELECT ticket_id FROM tbl_ticket WHERE reference_id = ?");
-$stmt->bind_param("s", $ref);
-$stmt->execute();
-$res = $stmt->get_result()->fetch_assoc();
-$stmt->close();
-
-if (!$res) {
-    echo json_encode([]);
+$ticket = checklistResolveTicketByRef($conn, $ref);
+if (!$ticket) {
+    http_response_code(404);
+    echo json_encode([
+        "ok" => false,
+        "error" => "Ticket not found"
+    ]);
     exit;
 }
 
-$ticket_id = $res['ticket_id'];
-
-// Fetch checklist items
-$sql = "SELECT item_id, ticket_id, created_by, is_technician, description, 
-               is_completed, created_at, completed_at
-        FROM tbl_ticket_checklist
-        WHERE ticket_id = ?
-        ORDER BY created_at ASC";
-
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("i", $ticket_id);
-$stmt->execute();
-
-$result = $stmt->get_result();
-$items = [];
-
-while ($row = $result->fetch_assoc()) {
-    $items[] = $row;
+$canView = checklistCanViewTicket($ticket);
+if (!$canView) {
+    http_response_code(403);
+    echo json_encode([
+        "ok" => false,
+        "error" => "Forbidden"
+    ]);
+    exit;
 }
 
-$stmt->close();
+$ticketId = (int)$ticket['ticket_id'];
+$items = checklistFetchItems($conn, $ticketId);
+$progress = checklistComputeProgress($items);
+$permissions = checklistPermissionsForCurrentUser($ticket);
+$hasSourceType = checklistHasColumn($conn, 'source_type');
+
+foreach ($items as &$item) {
+    $item['can_delete'] = checklistCanDeleteItem($item, $ticket, $permissions, $hasSourceType);
+}
+unset($item);
 $conn->close();
 
-echo json_encode($items);
+echo json_encode([
+    "ok" => true,
+    "ticket" => [
+        "ticket_id" => $ticketId,
+        "reference_id" => $ticket['reference_id'],
+        "status" => $ticket['status']
+    ],
+    "items" => $items,
+    "progress" => $progress,
+    "permissions" => $permissions
+]);
 ?>

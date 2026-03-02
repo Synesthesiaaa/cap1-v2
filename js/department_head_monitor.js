@@ -82,7 +82,7 @@ function renderTickets(tickets) {
     const tbody = document.getElementById('ticketsBody');
 
     if (tickets.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-6 text-gray-500">No tickets found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center py-6 text-gray-500">No tickets found</td></tr>';
         return;
     }
 
@@ -105,10 +105,15 @@ function renderTickets(tickets) {
             </td>
             <td class="py-3 px-2">${new Date(ticket.created_at).toLocaleDateString()}</td>
             <td class="py-3 px-2">
+                <span class="ticket-progress text-xs text-gray-600" data-ref="${ticket.reference_id}">--</span>
+            </td>
+            <td class="py-3 px-2">
                 <button onclick="openTicketView('${ticket.reference_id}')" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">View</button>
             </td>
         </tr>
     `).join('');
+
+    loadProgressForVisibleRows();
 }
 
 function getUrgencyClass(urgency) {
@@ -188,4 +193,29 @@ function renderPagination(pagination) {
 
 function openTicketView(ref) {
     window.location.href = `cust_ticket.php?ref=${encodeURIComponent(ref)}`;
+}
+
+async function loadProgressForVisibleRows() {
+    const els = Array.from(document.querySelectorAll('.ticket-progress[data-ref]'));
+    if (!els.length) return;
+
+    const refs = els.map((el) => el.dataset.ref).filter(Boolean);
+    if (!refs.length) return;
+
+    try {
+        const res = await fetch(`../php/get_ticket_progress.php?refs=${encodeURIComponent(refs.join(','))}`, { cache: 'no-store' });
+        const payload = await res.json();
+        if (!res.ok || !payload.ok) return;
+
+        els.forEach((el) => {
+            const p = payload.data?.[el.dataset.ref];
+            if (!p) {
+                el.textContent = '0/0 (0%)';
+                return;
+            }
+            el.textContent = `${p.completed}/${p.total} (${p.percent}%)`;
+        });
+    } catch (err) {
+        console.error('Error loading checklist progress:', err);
+    }
 }

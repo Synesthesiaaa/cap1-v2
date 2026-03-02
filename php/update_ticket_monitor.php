@@ -1,107 +1,56 @@
 <?php
-// Try to use new structure if available
-$useNewStructure = false;
-if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
-    require_once __DIR__ . '/../vendor/autoload.php';
-    require_once __DIR__ . '/../bootstrap.php';
-    if (class_exists('Services\LogService')) {
-        $useNewStructure = true;
-    }
+require_once __DIR__ . '/ticket_api_common.php';
+require_once __DIR__ . '/customer_summary_refresh.php';
+
+if (file_exists(__DIR__ . '/insert_log_monitor.php')) {
+    require_once __DIR__ . '/insert_log_monitor.php';
 }
 
-// Fallback to old structure
-if (!$useNewStructure) {
-    include("db.php");
-    if (file_exists("insert_log_monitor.php")) {
-        include("insert_log_monitor.php");
-    }
+$auth = ticketApiRequireAuth();
+ticketApiRequireRole(['admin', 'department_head', 'technician']);
+
+$ticket = ticketApiResolveTicketByRef($conn, $_POST['ref'] ?? '');
+$ticketId = (int)$ticket['ticket_id'];
+
+$priorityInput = (string)($_POST['priority'] ?? '');
+$slaDate = trim((string)($_POST['sla_date'] ?? ''));
+if ($priorityInput === '' || $slaDate === '') {
+    ticketApiJson(['ok' => false, 'error' => 'Missing required fields'], 400);
 }
-if (!isset($conn) || !($conn instanceof mysqli)) {
-    include("db.php");
+
+$normalized = ticketApiNormalizePriority($priorityInput);
+$stmt = $conn->prepare("UPDATE tbl_ticket SET priority = ?, urgency = ?, sla_date = ? WHERE ticket_id = ?");
+if (!$stmt) {
+    ticketApiJson(['ok' => false, 'error' => 'Database prepare failed'], 500);
+}
+$stmt->bind_param('sssi', $normalized['priority'], $normalized['urgency'], $slaDate, $ticketId);
+$ok = $stmt->execute();
+$stmt->close();
+
+if (!$ok) {
+    ticketApiJson(['ok' => false, 'error' => 'Failed to update ticket'], 500);
 }
 
-session_start();
-require_once 'customer_summary_refresh.php';
-
-@header("Content-Type: application/json");
-@ini_set('display_errors', 0);
-error_reporting(E_ALL);
-
-// ✅ Get user info from session
-$user_id = $_SESSION['id'] ?? null;
-$user_role = $_SESSION['role'] ?? 'system';
-
-try {
-    // ✅ Get POST data
-    $ref = $_POST['ref'] ?? '';
-    $priority = $_POST['priority'] ?? '';
-    $sla_date = $_POST['sla_date'] ?? '';
-
-    if (empty($ref) || empty($priority) || empty($sla_date)) {
-        echo json_encode(["ok" => false, "error" => "Missing required fields"]);
-        exit();
-    }
-
-    // ✅ Update the ticket
-    $stmt = $conn->prepare("UPDATE tbl_ticket SET priority = ?, sla_date = ? WHERE reference_id = ?");
-    if (!$stmt) {
-        echo json_encode(["ok" => false, "error" => "Prepare failed: " . $conn->error]);
-        exit();
-    }
-
-    $stmt->bind_param("sss", $priority, $sla_date, $ref);
-    $ok = $stmt->execute();
-    $stmt->close();
-
-    if (!$ok) {
-        throw new Exception("Database error: " . $conn->error);
-    }
-
-    // ✅ Retrieve ticket_id for logging
-    $get = $conn->prepare("SELECT ticket_id FROM tbl_ticket WHERE reference_id = ?");
-    $get->bind_param("s", $ref);
-    $get->execute();
-    $res = $get->get_result()->fetch_assoc();
-    $get->close();
-
-    $ticket_id = $res['ticket_id'] ?? null;
-
-    if (!$ticket_id) {
-        echo json_encode(["ok" => false, "error" => "Ticket not found"]);
-        exit();
-    }
-
-    refreshTicketSummaryByTicketId((int)$ticket_id, (isset($conn) && $conn instanceof mysqli) ? $conn : null);
-
-    // ✅ Insert log entry
-    $roleLabel = ucfirst($user_role); 
-    $userID = intval($user_id);    
-    $action_type = "edit";
-    $action_details = "$roleLabel ID $userID updated ticket: Priority set to {$priority}, SLA changed to {$sla_date}";
-    
-    // Use LogService if available
-    if ($useNewStructure) {
-        try {
-            $logService = new \Services\LogService();
-            $logService->logTicketAction($ticket_id, $user_id, $user_role, $action_type, $action_details);
-        } catch (\Exception $e) {
-            // Fallback to old method
-            if (function_exists('insertTicketLog')) {
-                insertTicketLog($ticket_id, $user_id, $user_role, $action_type, $action_details, $conn);
-            }
-        }
-    } elseif (function_exists('insertTicketLog')) {
-        insertTicketLog($ticket_id, $user_id, $user_role, $action_type, $action_details, $conn);
-    }
-
-    // ✅ Respond back
-    echo json_encode(["ok" => true, "ticket_id" => $ticket_id]);
-
-} catch (Throwable $e) {
-    echo json_encode(["ok" => false, "error" => $e->getMessage()]);
-} finally {
-    if (isset($conn) && $conn instanceof mysqli) {
-        $conn->close();
-    }
+if (function_exists('insertTicketLog')) {
+    $details = sprintf(
+        'Ticket updated: priority=%s, urgency=%s, sla_date=%s',
+        $normalized['priority'],
+        $normalized['urgency'],
+        $slaDate
+    );
+    insertTicketLog($ticketId, $auth['user_id'], $auth['role'], 'edit', $details, $conn);
 }
-?>
+
+refreshTicketSummaryByTicketId($ticketId, $conn);
+$conn->close();
+
+ticketApiJson([
+    'ok' => true,
+    'ticket' => [
+        'ticket_id' => $ticketId,
+        'reference_id' => $ticket['reference_id'],
+        'priority' => $normalized['priority'],
+        'urgency' => $normalized['urgency'],
+        'sla_date' => $slaDate,
+    ]
+]);

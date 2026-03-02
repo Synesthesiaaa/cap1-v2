@@ -161,6 +161,7 @@ $techName = $_SESSION['name'] ?? "Technician";
                 <th class="px-3 py-2">Status</th>
                 <th class="px-3 py-2">Priority</th>
                 <th class="px-3 py-2">SLA</th>
+                <th class="px-3 py-2">Progress</th>
                 <th class="px-3 py-2 text-right">Action</th>
             </tr>
             </thead>

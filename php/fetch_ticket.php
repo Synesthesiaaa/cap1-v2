@@ -36,8 +36,8 @@ $dept_id = intval($_SESSION['department_id'] ?? 0);
 // Inputs
 $table = intval($_GET['table'] ?? 1);
 $q = trim($_GET['q'] ?? "");
-$status = trim($_GET['status'] ?? "");
-$priority = trim($_GET['priority'] ?? "");
+$status = strtolower(trim($_GET['status'] ?? ""));
+$priority = strtolower(trim($_GET['priority'] ?? ""));
 $sort = $_GET['sort'] ?? "created_at_desc";
 $page = max(1, intval($_GET['page'] ?? 1));
 $limit = intval($_GET['page_size'] ?? 10);
@@ -126,12 +126,20 @@ if ($q !== "") {
 
 // Status filter
 if ($status !== "") {
-    $where[] = "t.status = ?";
+    if ($status === 'resolved') {
+        $status = 'complete';
+    }
+    $where[] = "LOWER(t.status) = ?";
     $values[] = $status; $types .= "s";
 }
 
 // Priority filter
 if ($priority !== "") {
+    if ($priority === 'medium') {
+        $priority = 'regular';
+    } elseif ($priority === 'urgent') {
+        $priority = 'critical';
+    }
     $where[] = "t.priority = ?";
     $values[] = $priority; $types .= "s";
 }

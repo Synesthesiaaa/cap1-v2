@@ -94,10 +94,10 @@ $summary['backlog'] = getCount(
 // Escalations (tickets assigned to this technician that are escalated)
 $summary['escalations'] = getCount(
     $conn,
-    "SELECT COUNT(*) FROM tbl_ticket t
+    "SELECT COUNT(DISTINCT t.ticket_id) FROM tbl_ticket t
      JOIN tbl_ticket_escalation e ON e.ticket_id = t.ticket_id
      WHERE t.assigned_technician_id = ?
-     AND e.sla_status = 'Escalated'",
+     AND e.sla_status IN ('escalated', 'overdue')",
     "i",
     [$techId]
 );

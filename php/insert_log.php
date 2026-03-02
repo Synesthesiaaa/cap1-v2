@@ -8,7 +8,7 @@
  */
 
 // insert_log.php - Helper function to insert logs into database
-
+if (!function_exists('insertTicketLog')) {
 function insertTicketLog($ticket_id, $user_id, $user_role, $action_type, $action_details, $conn = null) {
     // Try to use LogService if available
     if (class_exists('Services\LogService')) {
@@ -51,7 +51,7 @@ function insertTicketLog($ticket_id, $user_id, $user_role, $action_type, $action
             INSERT INTO tbl_ticket_logs (ticket_id, user_id, user_role, action_type, action_details, ip_address, user_agent, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
         ");
-        $stmt->bind_param("iissss", $ticket_id, $actual_user_id, $user_role, $action_type, $action_details, $ip_address, $user_agent);
+        $stmt->bind_param("iisssss", $ticket_id, $actual_user_id, $user_role, $action_type, $action_details, $ip_address, $user_agent);
         $result = $stmt->execute();
         $stmt->close();
 
@@ -67,5 +67,6 @@ function insertTicketLog($ticket_id, $user_id, $user_role, $action_type, $action
         }
         return false;
     }
+}
 }
 ?>

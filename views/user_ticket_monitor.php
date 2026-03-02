@@ -153,6 +153,28 @@ $created_ref = $_GET['ref'] ?? '';
 
     .center { text-align:center; }
 
+    .ticket-progress-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 110px;
+    }
+
+    .ticket-progress-mini {
+      width: 100%;
+      height: 5px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .ticket-progress-mini-fill {
+      height: 100%;
+      width: 0%;
+      background: #0b4c6a;
+      transition: width 0.2s ease;
+    }
+
     @media (max-width:768px) {
       .controls {
         flex-direction:column;
@@ -252,6 +274,7 @@ $created_ref = $_GET['ref'] ?? '';
               <th>Status</th>
               <th>Priority</th>
               <th>Date</th>
+              <th>Progress</th>
               <th>Details</th>
             </tr>
           </thead>
@@ -289,11 +312,12 @@ $created_ref = $_GET['ref'] ?? '';
     function renderStatusBadge(status) {
       const raw = (status || '').trim();
       if (!raw) return '';
-      const capital = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
       const lower = raw.toLowerCase();
-      const label = escapeHtml(raw);
+      const normalized = lower === 'resolved' ? 'complete' : lower;
+      const capital = normalized.charAt(0).toUpperCase() + normalized.slice(1);
+      const label = escapeHtml(capital);
       // Use shared .status + type-specific class so colors come from ticket_monitor2.css
-      return `<span class="status ${capital} ${lower}">${label}</span>`;
+      return `<span class="status ${capital} ${normalized}">${label}</span>`;
     }
 
     function renderPriorityBadge(priority) {
@@ -328,7 +352,8 @@ $created_ref = $_GET['ref'] ?? '';
     function fetchTickets() {
       const q = $('#search').val().trim();
       const status = $('#status').val();
-      const priority = $('#priority').val();
+      const priorityRaw = $('#priority').val();
+      const priority = priorityRaw === 'medium' ? 'regular' : priorityRaw;
       const sort = $('#sort').val();
       const page = currentPage;
 
@@ -358,7 +383,7 @@ $created_ref = $_GET['ref'] ?? '';
 
             tbody.empty();
             if (resp.data.length === 0) {
-              tbody.append('<tr><td colspan="6" class="center">No tickets found</td></tr>');
+              tbody.append('<tr><td colspan="7" class="center">No tickets found</td></tr>');
             } else {
               resp.data.forEach(r => {
                 const badge = renderStatusBadge(r.status);
@@ -371,10 +396,19 @@ $created_ref = $_GET['ref'] ?? '';
                   <td>${badge}</td>
                   <td>${priorityBadge}</td>
                   <td>${date}</td>
+                  <td>
+                    <div class="ticket-progress-wrap">
+                      <span class="ticket-progress text-muted small" data-ref="${ref}">--</span>
+                      <div class="ticket-progress-mini">
+                        <div class="ticket-progress-mini-fill" style="width:0%"></div>
+                      </div>
+                    </div>
+                  </td>
                   <td><a class="details-link" href="${detailsPage}?ref=${encodeURIComponent(r.reference_id)}">View Details</a></td>
                 </tr>`;
                 tbody.append(row);
               });
+              loadTicketProgress();
             }
 
             const totalPages = Math.max(1, resp.total_pages || 1);
@@ -413,6 +447,43 @@ $created_ref = $_GET['ref'] ?? '';
       // next
       const nextDisabled = current >= total ? 'disabled' : '';
       ul.append(`<li class="page-item ${nextDisabled}"><a class="page-link" href="#" data-page="${current+1}">Next</a></li>`);
+    }
+
+    async function loadTicketProgress() {
+      const nodes = Array.from(document.querySelectorAll('.ticket-progress[data-ref]'));
+      if (!nodes.length) return;
+
+      const refs = nodes.map((n) => n.dataset.ref).filter(Boolean);
+      if (!refs.length) return;
+
+      try {
+        const res = await fetch(`../php/get_ticket_progress.php?refs=${encodeURIComponent(refs.join(','))}`, { cache: 'no-store' });
+        const payload = await res.json();
+        if (!res.ok || !payload.ok) {
+          nodes.forEach((node) => {
+            node.textContent = '0/0 (0%)';
+            const fill = node.parentElement?.querySelector('.ticket-progress-mini-fill');
+            if (fill) fill.style.width = '0%';
+          });
+          return;
+        }
+
+        nodes.forEach((node) => {
+          const p = payload.data?.[node.dataset.ref];
+          const percentRaw = p ? Number(p.percent || 0) : 0;
+          const percent = Math.max(0, Math.min(100, Number.isFinite(percentRaw) ? percentRaw : 0));
+          node.textContent = p ? `${p.completed}/${p.total} (${percent}%)` : '0/0 (0%)';
+          const fill = node.parentElement?.querySelector('.ticket-progress-mini-fill');
+          if (fill) fill.style.width = `${percent}%`;
+        });
+      } catch (e) {
+        console.error('Failed to fetch ticket progress', e);
+        nodes.forEach((node) => {
+          node.textContent = '0/0 (0%)';
+          const fill = node.parentElement?.querySelector('.ticket-progress-mini-fill');
+          if (fill) fill.style.width = '0%';
+        });
+      }
     }
 
     // click handlers

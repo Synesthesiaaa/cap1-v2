@@ -1,349 +1,99 @@
 <?php
-/**
- * Post Reply - Migrated to use new architecture
- * 
- * This endpoint now uses ReplyService while maintaining backward compatibility
- */
+require_once __DIR__ . '/ticket_api_common.php';
+require_once __DIR__ . '/ticket_log_helper.php';
 
-@session_start();
-@header("Content-Type: application/json");
+$auth = ticketApiRequireAuth();
 
-function json_error($message) {
-    echo '{"ok":false,"error":"' . addslashes($message) . '"}';
-    exit(0);
+$ref = (string)($_POST['ref'] ?? '');
+$reply = trim((string)($_POST['reply'] ?? ''));
+$attachment = $_FILES['replyAttachment'] ?? null;
+
+if ($ref === '') {
+    ticketApiJson(['ok' => false, 'error' => 'Missing ticket reference'], 400);
+}
+if ($reply === '' && (!$attachment || ($attachment['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE)) {
+    ticketApiJson(['ok' => false, 'error' => 'Reply cannot be empty'], 400);
 }
 
-// Try to use new structure if available
-$useNewStructure = false;
-if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
-    require_once __DIR__ . '/../vendor/autoload.php';
-    require_once __DIR__ . '/../bootstrap.php';
-    if (class_exists('Services\ReplyService') && class_exists('Repositories\TicketRepository')) {
-        $useNewStructure = true;
+$ticket = ticketApiResolveTicketByRef($conn, $ref);
+ticketApiAuthorizeTicketAccess($ticket, 'reply_ticket', $auth);
+$ticketId = (int)$ticket['ticket_id'];
+
+$attachmentPath = '';
+if ($attachment && ($attachment['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+    if (($attachment['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+        ticketApiJson(['ok' => false, 'error' => 'Attachment upload failed'], 400);
     }
+
+    $allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+    if (!in_array((string)$attachment['type'], $allowedTypes, true)) {
+        ticketApiJson(['ok' => false, 'error' => 'Invalid file type. Allowed: JPG, PNG, PDF'], 400);
+    }
+    if ((int)$attachment['size'] > (50 * 1024 * 1024)) {
+        ticketApiJson(['ok' => false, 'error' => 'File too large (max 50MB)'], 400);
+    }
+
+    $uploadDir = __DIR__ . '/../uploads/replies/';
+    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true) && !is_dir($uploadDir)) {
+        ticketApiJson(['ok' => false, 'error' => 'Failed to create upload directory'], 500);
+    }
+
+    $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', (string)$attachment['name']);
+    $fileName = time() . '_' . $safeName;
+    $diskPath = $uploadDir . $fileName;
+
+    if (!move_uploaded_file((string)$attachment['tmp_name'], $diskPath)) {
+        ticketApiJson(['ok' => false, 'error' => 'Failed to upload file'], 500);
+    }
+
+    $attachmentPath = 'uploads/replies/' . $fileName;
 }
 
-try {
-    // #region agent log
-    $logFile = __DIR__ . '/../.cursor/debug.log';
-    $logEntry = json_encode([
-        'id' => 'log_' . time() . '_' . uniqid(),
-        'timestamp' => round(microtime(true) * 1000),
-        'location' => 'post_reply.php:26',
-        'message' => 'post_reply entry',
-        'data' => [
-            'hasSession' => isset($_SESSION['id']),
-            'sessionId' => $_SESSION['id'] ?? null,
-            'ref' => $_POST['ref'] ?? '',
-            'hasReply' => !empty(trim($_POST['reply'] ?? '')),
-            'hasAttachment' => !empty($_FILES['replyAttachment'] ?? null)
-        ],
-        'sessionId' => 'debug-session',
-        'runId' => 'run1',
-        'hypothesisId' => 'D'
-    ]) . "\n";
-    @file_put_contents($logFile, $logEntry, FILE_APPEND);
-    // #endregion
-    
-    if (!isset($_SESSION['id'])) {
-        json_error("Unauthorized - please log in");
-    }
-
-    $ref = $_POST['ref'] ?? '';
-    $reply = trim($_POST['reply'] ?? '');
-    $attachment = $_FILES['replyAttachment'] ?? null;
-
-    if (empty($ref)) {
-        json_error("Missing ticket reference");
-    }
-
-    if (empty($reply) && !$attachment) {
-        json_error("Reply cannot be empty and no attachment provided");
-    }
-
-    // Use new structure if available
-    if ($useNewStructure) {
-        try {
-            $ticketRepository = new \Repositories\TicketRepository();
-            $ticket = $ticketRepository->findByReference($ref);
-            
-            // #region agent log
-            $logEntry = json_encode([
-                'id' => 'log_' . time() . '_' . uniqid(),
-                'timestamp' => round(microtime(true) * 1000),
-                'location' => 'post_reply.php:47',
-                'message' => 'Ticket lookup (new structure)',
-                'data' => [
-                    'ref' => $ref,
-                    'ticketFound' => !!$ticket,
-                    'ticketId' => $ticket['ticket_id'] ?? null
-                ],
-                'sessionId' => 'debug-session',
-                'runId' => 'run1',
-                'hypothesisId' => 'D'
-            ]) . "\n";
-            @file_put_contents($logFile, $logEntry, FILE_APPEND);
-            // #endregion
-            
-            if (!$ticket) {
-                json_error("Ticket not found");
-            }
-            
-            $replyService = new \Services\ReplyService();
-            $replied_by = (($_SESSION['role'] ?? '') === 'technician') ? 'technician' : 'user';
-            $replier_id = $_SESSION['id'];
-            
-            // Handle attachment
-            $attachmentPath = null;
-            if ($attachment) {
-                try {
-                    $attachmentPath = $replyService->handleAttachmentUpload($attachment);
-                } catch (\Exception $e) {
-                    json_error($e->getMessage());
-                }
-            }
-            
-            // Create reply
-            $replyData = $replyService->createReply(
-                $ticket['ticket_id'],
-                $replier_id,
-                $replied_by,
-                $reply,
-                $attachmentPath
-            );
-            
-            if ($replyData) {
-                echo json_encode([
-                    "ok" => true,
-                    "reply" => $replyData
-                ]);
-                exit(0);
-            } else {
-                json_error("Failed to save reply");
-            }
-        } catch (\Exception $e) {
-            // Fall through to old implementation
-            $useNewStructure = false;
-        }
-    }
-    
-    // OLD IMPLEMENTATION (fallback)
-    if (!$useNewStructure) {
-        // Handle file upload
-        $attachment_path = null;
-        if ($attachment && $attachment['error'] === UPLOAD_ERR_OK) {
-            $allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
-            if (!in_array($attachment['type'], $allowed_types)) {
-                json_error("Invalid file type. Only JPG, PNG, and PDF files are allowed.");
-            }
-
-            $max_size = 50 * 1024 * 1024;
-            if ($attachment['size'] > $max_size) {
-                json_error("File too large. Maximum file size is 50MB.");
-            }
-
-            $upload_dir = '../uploads/replies/';
-            if (!is_dir($upload_dir)) {
-                mkdir($upload_dir, 0755, true);
-            }
-
-            $timestamp = time();
-            $filename = $timestamp . '_' . basename($attachment['name']);
-            $file_path = $upload_dir . $filename;
-
-            if (move_uploaded_file($attachment['tmp_name'], $file_path)) {
-                $attachment_path = $file_path;
-            } else {
-                json_error("Failed to upload file.");
-            }
-        }
-        
-        include("db.php");
-
-        // Get ticket ID
-        // #region agent log
-        $logEntry = json_encode([
-            'id' => 'log_' . time() . '_' . uniqid(),
-            'timestamp' => round(microtime(true) * 1000),
-            'location' => 'post_reply.php:125',
-            'message' => 'Ticket lookup (old structure)',
-            'data' => ['ref' => $ref],
-            'sessionId' => 'debug-session',
-            'runId' => 'run1',
-            'hypothesisId' => 'D'
-        ]) . "\n";
-        @file_put_contents($logFile, $logEntry, FILE_APPEND);
-        // #endregion
-        $stmt = $conn->prepare("SELECT ticket_id FROM tbl_ticket WHERE reference_id = ?");
-        $stmt->bind_param("s", $ref);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        $ticket = $res->fetch_assoc();
-        $stmt->close();
-        
-        // #region agent log
-        $logEntry = json_encode([
-            'id' => 'log_' . time() . '_' . uniqid(),
-            'timestamp' => round(microtime(true) * 1000),
-            'location' => 'post_reply.php:132',
-            'message' => 'Ticket lookup result',
-            'data' => [
-                'ticketFound' => !!$ticket,
-                'ticketId' => $ticket['ticket_id'] ?? null,
-                'dbError' => $conn->error ?? null
-            ],
-            'sessionId' => 'debug-session',
-            'runId' => 'run1',
-            'hypothesisId' => 'D'
-        ]) . "\n";
-        @file_put_contents($logFile, $logEntry, FILE_APPEND);
-        // #endregion
-
-        if (!$ticket) {
-            json_error("Ticket not found");
-        }
-
-        $ticket_id = $ticket['ticket_id'];
-        $replied_by = (($_SESSION['role'] ?? '') === 'technician') ? 'technician' : 'user';
-        $replier_id = $_SESSION['id'];
-
-        // Prepare attachment path
-        $db_attachment_path = '';
-        if ($attachment_path) {
-            $db_attachment_path = str_replace('../', '', $attachment_path);
-        }
-
-        // Insert reply
-        $insert = $conn->prepare("
-            INSERT INTO tbl_ticket_reply (ticket_id, replied_by, replier_id, reply_text, attachment_path, created_at)
-            VALUES (?, ?, ?, ?, ?, NOW())
-        ");
-        // #region agent log
-        $logEntry = json_encode([
-            'id' => 'log_' . time() . '_' . uniqid(),
-            'timestamp' => round(microtime(true) * 1000),
-            'location' => 'post_reply.php:221',
-            'message' => 'Before bind_param',
-            'data' => [
-                'typeString' => 'isiss',
-                'typeStringLength' => 5,
-                'params' => [
-                    'ticket_id' => $ticket_id,
-                    'replied_by' => $replied_by,
-                    'replier_id' => $replier_id,
-                    'reply' => substr($reply, 0, 50) . (strlen($reply) > 50 ? '...' : ''),
-                    'db_attachment_path' => $db_attachment_path
-                ],
-                'paramsCount' => 5,
-                'attachmentPathIsNull' => is_null($db_attachment_path)
-            ],
-            'sessionId' => 'debug-session',
-            'runId' => 'run1',
-            'hypothesisId' => 'F'
-        ]) . "\n";
-        @file_put_contents($logFile, $logEntry, FILE_APPEND);
-        // #endregion
-        if (!$insert) {
-            // #region agent log
-            $logEntry = json_encode([
-                'id' => 'log_' . time() . '_' . uniqid(),
-                'timestamp' => round(microtime(true) * 1000),
-                'location' => 'post_reply.php:221',
-                'message' => 'Prepare failed',
-                'data' => ['error' => $conn->error],
-                'sessionId' => 'debug-session',
-                'runId' => 'run1',
-                'hypothesisId' => 'F'
-            ]) . "\n";
-            @file_put_contents($logFile, $logEntry, FILE_APPEND);
-            // #endregion
-            json_error("Prepare failed: " . $conn->error);
-        }
-        $bindResult = $insert->bind_param("isiss", $ticket_id, $replied_by, $replier_id, $reply, $db_attachment_path);
-        // #region agent log
-        $logEntry = json_encode([
-            'id' => 'log_' . time() . '_' . uniqid(),
-            'timestamp' => round(microtime(true) * 1000),
-            'location' => 'post_reply.php:221',
-            'message' => 'After bind_param',
-            'data' => [
-                'bindResult' => $bindResult,
-                'stmtError' => $insert->error ?? null
-            ],
-            'sessionId' => 'debug-session',
-            'runId' => 'run1',
-            'hypothesisId' => 'F'
-        ]) . "\n";
-        @file_put_contents($logFile, $logEntry, FILE_APPEND);
-        // #endregion
-        if (!$bindResult) {
-            json_error("Error: " . $insert->error);
-        }
-        $ok = $insert->execute();
-        $insert->close();
-
-        if ($ok) {
-            // Get the inserted reply ID
-            $reply_id = $conn->insert_id;
-
-            // Log the reply action
-            $action_details = strlen($reply) > 100 ? substr($reply, 0, 97) . "..." : $reply;
-            $log_message = "Added reply: {$action_details}";
-            
-            // Try to use LogService if available
-            if (class_exists('Services\LogService')) {
-                try {
-                    $logService = new \Services\LogService();
-                    $logService->logTicketAction($ticket_id, $replier_id, $replied_by, 'reply', $log_message);
-                } catch (\Exception $e) {
-                    // Fallback to old method
-                    if (file_exists("insert_log.php")) {
-                        include("insert_log.php");
-                        if (function_exists('insertTicketLog')) {
-                            insertTicketLog($ticket_id, $replier_id, $replied_by, 'reply', $log_message, $conn);
-                        }
-                    }
-                }
-            } elseif (file_exists("insert_log.php")) {
-                include("insert_log.php");
-                if (function_exists('insertTicketLog')) {
-                    insertTicketLog($ticket_id, $replier_id, $replied_by, 'reply', $log_message, $conn);
-                }
-            }
-
-            // Fetch the complete reply data
-            $fetch_stmt = $conn->prepare("
-                SELECT r.reply_text AS message, r.replied_by, r.attachment_path, r.created_at,
-                       CASE r.replied_by
-                           WHEN 'user' THEN u.name
-                           WHEN 'technician' THEN COALESCE(tech.name, 'Support Agent')
-                           ELSE 'System'
-                       END AS sender
-                FROM tbl_ticket_reply r
-                LEFT JOIN tbl_user u ON r.replied_by = 'user' AND r.replier_id = u.user_id
-                LEFT JOIN tbl_technician tech ON r.replied_by = 'technician' AND r.replier_id = tech.technician_id
-                WHERE r.reply_id = ?
-            ");
-            $fetch_stmt->bind_param("i", $reply_id);
-            $fetch_stmt->execute();
-            $reply_data = $fetch_stmt->get_result()->fetch_assoc();
-            $fetch_stmt->close();
-
-            echo json_encode([
-                "ok" => true,
-                "reply" => $reply_data
-            ]);
-            exit(0);
-        } else {
-            json_error("Failed to save reply: " . $conn->error);
-        }
-
-        $conn->close();
-    }
-
-} catch (Exception $e) {
-    json_error("Exception: " . $e->getMessage());
-} catch (Throwable $t) {
-    json_error("Error: " . $t->getMessage());
+$repliedBy = $auth['role'] === 'technician' ? 'technician' : 'user';
+$stmt = $conn->prepare("
+    INSERT INTO tbl_ticket_reply (ticket_id, replied_by, replier_id, reply_text, attachment_path, created_at)
+    VALUES (?, ?, ?, ?, ?, NOW())
+");
+if (!$stmt) {
+    ticketApiJson(['ok' => false, 'error' => 'Database prepare failed'], 500);
 }
-?>
+$stmt->bind_param('isiss', $ticketId, $repliedBy, $auth['user_id'], $reply, $attachmentPath);
+$ok = $stmt->execute();
+$replyId = $ok ? (int)$conn->insert_id : 0;
+$stmt->close();
+
+if (!$ok) {
+    ticketApiJson(['ok' => false, 'error' => 'Failed to save reply'], 500);
+}
+
+if (function_exists('insertTicketLog')) {
+    $excerpt = $reply !== '' ? substr($reply, 0, 100) : '[Attachment only]';
+    insertTicketLog($ticketId, $auth['user_id'], $auth['role'], 'reply', 'Added reply: ' . $excerpt, $conn);
+}
+
+$fetch = $conn->prepare("
+    SELECT r.reply_id, r.reply_text AS message, r.replied_by, r.attachment_path, r.created_at,
+           CASE r.replied_by
+               WHEN 'user' THEN u.name
+               WHEN 'technician' THEN COALESCE(tech.name, 'Support Agent')
+               ELSE 'System'
+           END AS sender
+    FROM tbl_ticket_reply r
+    LEFT JOIN tbl_user u ON r.replied_by = 'user' AND r.replier_id = u.user_id
+    LEFT JOIN tbl_technician tech ON r.replied_by = 'technician' AND r.replier_id = tech.technician_id
+    WHERE r.reply_id = ?
+    LIMIT 1
+");
+if (!$fetch) {
+    ticketApiJson(['ok' => true, 'reply' => null]);
+}
+$fetch->bind_param('i', $replyId);
+$fetch->execute();
+$replyData = $fetch->get_result()->fetch_assoc();
+$fetch->close();
+
+$conn->close();
+ticketApiJson([
+    'ok' => true,
+    'reply' => $replyData,
+]);

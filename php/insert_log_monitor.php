@@ -7,6 +7,7 @@
  * All new code should use: $logService = new \Services\LogService();
  */
 
+if (!function_exists('insertTicketLog')) {
 function insertTicketLog($ticket_id, $user_id, $user_role, $action_type, $action_details, $conn = null) {
     // Try to use LogService if available
     if (class_exists('Services\LogService')) {
@@ -54,7 +55,7 @@ function insertTicketLog($ticket_id, $user_id, $user_role, $action_type, $action
         return false;
     }
 
-    $stmt->bind_param("iissss", $ticket_id, $user_id, $user_role, $action_type, $action_details, $ip_address, $user_agent);
+    $stmt->bind_param("iisssss", $ticket_id, $user_id, $user_role, $action_type, $action_details, $ip_address, $user_agent);
     $ok = $stmt->execute();
     $stmt->close();
 
@@ -65,5 +66,6 @@ function insertTicketLog($ticket_id, $user_id, $user_role, $action_type, $action
     }
 
     return $ok;
+}
 }
 ?>
