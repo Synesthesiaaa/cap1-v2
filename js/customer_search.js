@@ -1,4 +1,4 @@
-// Helper function to escape HTML
+MMMMMMCMM// Helper function to escape HTML
 function escapeHtml(text) {
     if (!text) return '';
     const map = {
@@ -251,10 +251,15 @@ $(document).ready(function() {
             slaStatus === 'At Risk' ? 'text-red-600' : 'text-gray-600'
         );
 
+<<<<<<< Updated upstream
         const csatVal = parseFloat(customer.csat_score) || 0;
         profileCSAT.html(`${(csatVal / 20).toFixed(1)}<span class="text-gray-500 text-sm">/5.0</span>`);
         profileStaff.text(customer.department_name || 'Unassigned');
 
+=======
+55U
+        // Staff avatar
+>>>>>>> Stashed changes
         const staffSeed = customer.department_name ? customer.department_name.replace(/\s+/g, '') : 'Staff';
         $('#staffAvatar').attr('src', `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(staffSeed)}`);
 
