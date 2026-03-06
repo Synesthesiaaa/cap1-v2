@@ -18,7 +18,15 @@ if not exist "%PHP_BIN%" (
 for /f %%i in ('powershell -NoProfile -Command "(Get-Date).ToString('yyyyMMdd-HHmmss')"') do set "TS=%%i"
 set "LOG_FILE=%LOG_DIR%\sla-automation-%TS%.log"
 
-"%PHP_BIN%" "%PHP_SCRIPT%" > "%LOG_FILE%" 2>&1
+echo Starting SLA automation...
+echo Log file: %LOG_FILE%
+echo.
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$phpBin = '%PHP_BIN%';" ^
+  "$phpScript = '%PHP_SCRIPT%';" ^
+  "$logFile = '%LOG_FILE%';" ^
+  "& $phpBin $phpScript 2>&1 | Tee-Object -FilePath $logFile -Append; exit $LASTEXITCODE"
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (
@@ -28,4 +36,3 @@ if not "%EXIT_CODE%"=="0" (
 )
 
 exit /b %EXIT_CODE%
-
