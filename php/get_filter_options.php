@@ -103,7 +103,7 @@ class FilterOptionsAPI extends BaseAPI
      */
     private function getSummaryCounts(string $search, string $userType): ?array
     {
-        if (!$this->hasSummaryTable()) {
+        if (!$this->hasUsableSummaryTable()) {
             return null;
         }
 
@@ -117,7 +117,7 @@ class FilterOptionsAPI extends BaseAPI
                 SUM(CASE WHEN COALESCE(s.ticket_count, 0) >= 3 AND COALESCE(s.urgent_high_count, 0) > 0 THEN 1 ELSE 0 END) AS sla_priority,
                 SUM(CASE WHEN s.last_contact >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS sla_recent,
                 SUM(CASE WHEN COALESCE(s.success_rate, 0) >= 80 THEN 1 ELSE 0 END) AS sla_success,
-                SUM(CASE WHEN s.current_ticket_status IN ('assigning', 'pending', 'followup') THEN 1 ELSE 0 END) AS activity_active,
+                SUM(CASE WHEN COALESCE(s.ticket_count, 0) > 0 AND COALESCE(NULLIF(s.current_ticket_status, ''), 'unassigned') IN ('unassigned', 'assigning', 'pending', 'followup') THEN 1 ELSE 0 END) AS activity_active,
                 SUM(CASE WHEN s.sla_status = 'At Risk' THEN 1 ELSE 0 END) AS activity_overdue,
                 SUM(CASE WHEN COALESCE(s.ticket_count, 0) <= 2 THEN 1 ELSE 0 END) AS activity_churn
             FROM tbl_user u
@@ -165,7 +165,7 @@ class FilterOptionsAPI extends BaseAPI
                 SUM(CASE WHEN agg.ticket_count >= 3 AND agg.urgent_high_count > 0 THEN 1 ELSE 0 END) AS sla_priority,
                 SUM(CASE WHEN agg.last_contact >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS sla_recent,
                 SUM(CASE WHEN COALESCE(agg.success_rate, 0) >= 80 THEN 1 ELSE 0 END) AS sla_success,
-                SUM(CASE WHEN latest.current_ticket_status IN ('assigning', 'pending', 'followup') THEN 1 ELSE 0 END) AS activity_active,
+                SUM(CASE WHEN latest.current_ticket_status IN ('unassigned', 'assigning', 'pending', 'followup') THEN 1 ELSE 0 END) AS activity_active,
                 SUM(CASE WHEN agg.sla_status = 'At Risk' THEN 1 ELSE 0 END) AS activity_overdue,
                 SUM(CASE WHEN COALESCE(agg.ticket_count, 0) <= 2 THEN 1 ELSE 0 END) AS activity_churn
             FROM tbl_user u
@@ -176,9 +176,10 @@ class FilterOptionsAPI extends BaseAPI
                     MAX(t.created_at) AS last_contact,
                     ROUND((SUM(CASE WHEN t.status = 'complete' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)) * 100, 1) AS success_rate,
                     CASE
-                        WHEN SUM(CASE WHEN t.sla_date < CURDATE() AND t.status != 'complete' THEN 1 ELSE 0 END) > 0 THEN 'At Risk'
-                        WHEN SUM(CASE WHEN t.sla_date >= CURDATE() AND t.sla_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY) AND t.status != 'complete' THEN 1 ELSE 0 END) > 0 THEN 'Approaching'
-                        ELSE 'On Track'
+                        WHEN SUM(CASE WHEN COALESCE(NULLIF(t.status, ''), 'unassigned') IN ('unassigned', 'assigning', 'pending', 'followup') AND t.sla_date < CURDATE() THEN 1 ELSE 0 END) > 0 THEN 'At Risk'
+                        WHEN SUM(CASE WHEN COALESCE(NULLIF(t.status, ''), 'unassigned') IN ('unassigned', 'assigning', 'pending', 'followup') AND t.sla_date >= CURDATE() AND t.sla_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY) THEN 1 ELSE 0 END) > 0 THEN 'Approaching'
+                        WHEN SUM(CASE WHEN COALESCE(NULLIF(t.status, ''), 'unassigned') IN ('unassigned', 'assigning', 'pending', 'followup') THEN 1 ELSE 0 END) > 0 THEN 'On Track'
+                        ELSE 'No Open Tickets'
                     END AS sla_status,
                     SUM(CASE WHEN t.priority IN ('urgent', 'high') THEN 1 ELSE 0 END) AS urgent_high_count
                 FROM tbl_ticket t
@@ -187,7 +188,7 @@ class FilterOptionsAPI extends BaseAPI
             LEFT JOIN (
                 SELECT x.user_id, x.status AS current_ticket_status
                 FROM (
-                    SELECT t.user_id, t.status, ROW_NUMBER() OVER (PARTITION BY t.user_id ORDER BY t.created_at DESC, t.ticket_id DESC) AS rn
+                    SELECT t.user_id, COALESCE(NULLIF(t.status, ''), 'unassigned') AS status, ROW_NUMBER() OVER (PARTITION BY t.user_id ORDER BY t.created_at DESC, t.ticket_id DESC) AS rn
                     FROM tbl_ticket t
                 ) x
                 WHERE x.rn = 1
@@ -240,7 +241,7 @@ class FilterOptionsAPI extends BaseAPI
         ];
 
         $map = [
-            'active' => ['count' => (int)$counts['activity_active'], 'label' => 'Active (Assigning, Pending, Follow-up)'],
+            'active' => ['count' => (int)$counts['activity_active'], 'label' => 'Active (Unassigned, Assigning, Pending, Follow-up)'],
             'overdue' => ['count' => (int)$counts['activity_overdue'], 'label' => 'Overdue (Past SLA dates)'],
             'churn_risk' => ['count' => (int)$counts['activity_churn'], 'label' => 'Churn Risk (<=2 tickets)'],
         ];
@@ -286,8 +287,17 @@ class FilterOptionsAPI extends BaseAPI
         $res = @$this->conn->query("SHOW TABLES LIKE 'tbl_user_ticket_summary'");
         return $res && $res->num_rows > 0;
     }
+
+    private function hasUsableSummaryTable(): bool
+    {
+        if (!$this->hasSummaryTable()) {
+            return false;
+        }
+
+        $res = @$this->conn->query("SELECT 1 FROM tbl_user_ticket_summary LIMIT 1");
+        return $res && $res->num_rows > 0;
+    }
 }
 
 $api = new FilterOptionsAPI();
 $api->handleRequest();
-

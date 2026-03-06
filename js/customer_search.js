@@ -158,6 +158,7 @@ $(document).ready(function() {
 
     function getStatusBadge(ticketStatus) {
         const statusMap = {
+            unassigned: '<span class="text-xs bg-gray-100 text-gray-800 px-2 py-0.5 rounded-full">Unassigned</span>',
             assigning: '<span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full">Assigning</span>',
             pending: '<span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Pending</span>',
             followup: '<span class="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">Follow-up</span>',
@@ -251,8 +252,11 @@ $(document).ready(function() {
             slaStatus === 'At Risk' ? 'text-red-600' : 'text-gray-600'
         );
 
-        const csatVal = parseFloat(customer.csat_score) || 0;
-        profileCSAT.html(`${(csatVal / 20).toFixed(1)}<span class="text-gray-500 text-sm">/5.0</span>`);
+        if (customer.csat_score === null || customer.csat_score === undefined || customer.csat_score === '') {
+            profileCSAT.text('N/A');
+        } else {
+            profileCSAT.text(String(customer.csat_score));
+        }
         profileStaff.text(customer.department_name || 'Unassigned');
 
         const staffSeed = customer.department_name ? customer.department_name.replace(/\s+/g, '') : 'Staff';
@@ -387,7 +391,7 @@ $(document).ready(function() {
         $.ajax({
             url: '../php/tickets_list.php',
             type: 'GET',
-            data: { user_id: userId, sort: 'date_desc' },
+            data: { user_id: userId, sort: 'date_desc', include_completed: 1 },
             dataType: 'json',
             success: function(data) {
                 if (data && data.data && data.data.length > 0) {
@@ -417,7 +421,7 @@ $(document).ready(function() {
             if (!content) return;
             content.innerHTML = '<div class="modal-loading-wrap"><div class="modal-spinner"></div><p class="text-sm text-gray-500">Loading ticket...</p></div>';
             if (typeof window.openCustomerModal === 'function') window.openCustomerModal('ticketModal');
-            $.getJSON('../php/tickets_list.php?user_id=' + encodeURIComponent(userId) + '&sort=date_desc')
+            $.getJSON('../php/tickets_list.php?user_id=' + encodeURIComponent(userId) + '&sort=date_desc&include_completed=1')
                 .done(function(data) {
                     if (data && data.error) {
                         content.innerHTML = '<p class="text-red-600">' + escapeHtml(data.error || 'Unable to load ticket.') + '</p>';
@@ -433,7 +437,7 @@ $(document).ready(function() {
                             '<p><strong>Created:</strong> ' + (ticket.created_at ? new Date(ticket.created_at).toLocaleDateString() : '') + '</p>' +
                             '<p class="mt-2"><a href="cust_ticket.php?ref=' + encodeURIComponent(ticket.reference_id) + '" class="text-blue-600 hover:underline">Open ticket -></a></p>';
                     } else {
-                        content.innerHTML = '<p>No active tickets found for this customer.</p>';
+                        content.innerHTML = '<p>No tickets found for this customer.</p>';
                     }
                 })
                 .fail(function() {
@@ -447,7 +451,7 @@ $(document).ready(function() {
             if (!content) return;
             content.innerHTML = '<li class="list-none"><div class="modal-loading-wrap"><div class="modal-spinner"></div><p class="text-sm text-gray-500">Loading history...</p></div></li>';
             if (typeof window.openCustomerModal === 'function') window.openCustomerModal('historyModal');
-            $.getJSON('../php/tickets_list.php?user_id=' + encodeURIComponent(userId) + '&sort=date_desc&pageSize=50')
+            $.getJSON('../php/tickets_list.php?user_id=' + encodeURIComponent(userId) + '&sort=date_desc&pageSize=50&include_completed=1')
                 .done(function(data) {
                     if (data && data.error) {
                         content.innerHTML = '<li class="text-red-600">' + escapeHtml(data.error || 'Unable to load history.') + '</li>';
@@ -600,4 +604,3 @@ $(document).ready(function() {
     loadFilterOptions('', 'all');
     loadCustomers('', 'all', 'all', 'all', 1);
 });
-

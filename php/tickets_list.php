@@ -2,11 +2,15 @@
 header('Content-Type: application/json');
 session_start();
 require_once 'db.php';
+require_once 'check_cm_access.php';
 
 // For technicians: id is technician_id; for admins use technician_id if set
 $tech_id = $_SESSION['technician_id'] ?? $_SESSION['id'] ?? 0;
-// Allow roles that can access ticket list (technician, admin, department_head for customer management)
-if (!isset($_SESSION['id']) || !in_array($_SESSION['role'], ['technician', 'admin', 'department_head'])) {
+// Allow monitor roles and customer-management readonly/full access users.
+$role = $_SESSION['role'] ?? '';
+$isMonitorRole = in_array($role, ['technician', 'admin', 'department_head'], true);
+$hasCmAccess = requireCMAccess('readonly');
+if (!isset($_SESSION['id']) || (!$isMonitorRole && !$hasCmAccess)) {
     echo json_encode(["error" => "Unauthorized"]);
     exit;
 }
@@ -20,6 +24,7 @@ $status     = $_GET['status']   ?? '';
 $userId     = $_GET['user_id']   ?? null; // For customer management page
 $page       = max(1, intval($_GET['page'] ?? 1));
 $pageSize   = max(5, intval($_GET['pageSize'] ?? 10));
+$includeCompleted = (isset($_GET['include_completed']) && (int)$_GET['include_completed'] === 1) ? 1 : 0;
 
 /* Summary card overrides */
 $assigned_only    = isset($_GET['assigned_only'])    ? 1 : 0;
@@ -50,6 +55,7 @@ switch ($sort) {
 $where = [];
 $params = [];
 $types = "";
+$normalizedStatusExpr = "COALESCE(NULLIF(t.status, ''), 'unassigned')";
 
 /* Search */
 if ($search !== "") {
@@ -66,7 +72,7 @@ if ($priority !== "") {
 
 /* Status */
 if ($status !== "") {
-    $where[] = "t.status = ?";
+    $where[] = "{$normalizedStatusExpr} = ?";
     $params[] = $status; $types .= "s";
 }
 
@@ -100,11 +106,11 @@ if ($due_today) {
 }
 
 if ($overdue) {
-    $where[] = "t.sla_date < NOW() AND t.status != 'complete'";
+    $where[] = "t.sla_date < NOW() AND {$normalizedStatusExpr} != 'complete'";
 }
 
 if ($backlog) {
-    $where[] = "t.status != 'complete'";
+    $where[] = "{$normalizedStatusExpr} != 'complete'";
 }
 
 if ($escalated_filter) {
@@ -117,8 +123,8 @@ if ($escalated_filter) {
 }
 
 /* Always exclude completed unless specifically filtering for backlog */
-if (!$backlog && !$escalated_filter && !$overdue && !$due_today && !$due_within_hours) {
-    $where[] = "t.status != 'complete'";
+if ($status === "" && !$includeCompleted && !$backlog && !$escalated_filter && !$overdue && !$due_today && !$due_within_hours) {
+    $where[] = "{$normalizedStatusExpr} != 'complete'";
 }
 
 $whereSQL = count($where) ? "WHERE " . implode(" AND ", $where) : "";
@@ -149,7 +155,7 @@ if ($userId === null) {
     $summary['open'] = getSingleValue(
         $conn,
         "SELECT COUNT(*) FROM tbl_ticket 
-         WHERE assigned_technician_id = ? AND status != 'complete'",
+         WHERE assigned_technician_id = ? AND COALESCE(NULLIF(status, ''), 'unassigned') != 'complete'",
         "i",
         [$tech_id]
     );
@@ -159,7 +165,7 @@ if ($userId === null) {
         $conn,
         "SELECT COUNT(*) FROM tbl_ticket 
          WHERE assigned_technician_id = ? 
-         AND status != 'complete'
+         AND COALESCE(NULLIF(status, ''), 'unassigned') != 'complete'
          AND TIMESTAMPDIFF(HOUR, NOW(), sla_date) BETWEEN 0 AND 42",
         "i",
         [$tech_id]
@@ -170,7 +176,7 @@ if ($userId === null) {
         $conn,
         "SELECT COUNT(*) FROM tbl_ticket 
          WHERE assigned_technician_id = ?
-         AND status != 'complete'
+         AND COALESCE(NULLIF(status, ''), 'unassigned') != 'complete'
          AND DATE(sla_date) = CURDATE()",
         "i",
         [$tech_id]
@@ -182,7 +188,7 @@ if ($userId === null) {
         "SELECT COUNT(*) FROM tbl_ticket 
          WHERE assigned_technician_id = ?
          AND sla_date < NOW()
-         AND status != 'complete'",
+         AND COALESCE(NULLIF(status, ''), 'unassigned') != 'complete'",
         "i",
         [$tech_id]
     );
@@ -191,7 +197,7 @@ if ($userId === null) {
     $summary['backlog'] = getSingleValue(
         $conn,
         "SELECT COUNT(*) FROM tbl_ticket
-         WHERE status != 'complete'"
+         WHERE COALESCE(NULLIF(status, ''), 'unassigned') != 'complete'"
     );
 
     /* Escalations (Assigned + Exists in escalation table) */
@@ -220,7 +226,7 @@ SELECT
     t.ticket_id,
     t.reference_id,
     t.title,
-    t.status,
+    COALESCE(NULLIF(t.status, ''), 'unassigned') AS status,
     t.priority,
     t.type,
     t.sla_date,

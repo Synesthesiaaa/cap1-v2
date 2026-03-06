@@ -39,7 +39,7 @@ if (!function_exists('refreshUserTicketSummary')) {
                 COALESCE(agg.ticket_count, 0) AS ticket_count,
                 agg.last_contact,
                 agg.success_rate,
-                COALESCE(agg.sla_status, 'On Track') AS sla_status,
+                COALESCE(agg.sla_status, 'No Open Tickets') AS sla_status,
                 latest.status AS current_ticket_status,
                 COALESCE(agg.urgent_high_count, 0) AS urgent_high_count
             FROM (SELECT ? AS user_id) seed
@@ -52,16 +52,17 @@ if (!function_exists('refreshUserTicketSummary')) {
                         1
                     ) AS success_rate,
                     CASE
-                        WHEN SUM(CASE WHEN t.sla_date < CURDATE() AND t.status <> 'complete' THEN 1 ELSE 0 END) > 0 THEN 'At Risk'
-                        WHEN SUM(CASE WHEN t.sla_date >= CURDATE() AND t.sla_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY) AND t.status <> 'complete' THEN 1 ELSE 0 END) > 0 THEN 'Approaching'
-                        ELSE 'On Track'
+                        WHEN SUM(CASE WHEN COALESCE(NULLIF(t.status, ''), 'unassigned') IN ('unassigned','assigning','pending','followup') AND t.sla_date < CURDATE() THEN 1 ELSE 0 END) > 0 THEN 'At Risk'
+                        WHEN SUM(CASE WHEN COALESCE(NULLIF(t.status, ''), 'unassigned') IN ('unassigned','assigning','pending','followup') AND t.sla_date >= CURDATE() AND t.sla_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY) THEN 1 ELSE 0 END) > 0 THEN 'Approaching'
+                        WHEN SUM(CASE WHEN COALESCE(NULLIF(t.status, ''), 'unassigned') IN ('unassigned','assigning','pending','followup') THEN 1 ELSE 0 END) > 0 THEN 'On Track'
+                        ELSE 'No Open Tickets'
                     END AS sla_status,
                     SUM(CASE WHEN t.priority IN ('urgent', 'high') THEN 1 ELSE 0 END) AS urgent_high_count
                 FROM tbl_ticket t
                 WHERE t.user_id = ?
             ) agg ON 1 = 1
             LEFT JOIN (
-                SELECT t2.status
+                SELECT COALESCE(NULLIF(t2.status, ''), 'unassigned') AS status
                 FROM tbl_ticket t2
                 WHERE t2.user_id = ?
                 ORDER BY t2.created_at DESC, t2.ticket_id DESC
@@ -162,4 +163,3 @@ if (!function_exists('refreshTicketSummaryByReference')) {
         return refreshTicketSummaryByTicketId((int)$row['ticket_id'], $localConn);
     }
 }
-

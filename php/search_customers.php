@@ -28,7 +28,7 @@ class CustomerSearchAPI extends BaseAPI
         $page = max(1, (int)($_GET['page'] ?? 1));
         $limit = max(10, min(50, (int)($_GET['limit'] ?? 20)));
 
-        $useSummary = $this->hasSummaryTable();
+        $useSummary = $this->hasUsableSummaryTable();
 
         if ($useSummary) {
             [$countSql, $countParams, $countTypes] = $this->buildSummaryCountQuery($search, $userType, $slaStatus, $activityStatus);
@@ -63,6 +63,16 @@ class CustomerSearchAPI extends BaseAPI
     private function hasSummaryTable(): bool
     {
         $r = @$this->conn->query("SHOW TABLES LIKE 'tbl_user_ticket_summary'");
+        return $r && $r->num_rows > 0;
+    }
+
+    private function hasUsableSummaryTable(): bool
+    {
+        if (!$this->hasSummaryTable()) {
+            return false;
+        }
+
+        $r = @$this->conn->query("SELECT 1 FROM tbl_user_ticket_summary LIMIT 1");
         return $r && $r->num_rows > 0;
     }
 
@@ -108,7 +118,8 @@ class CustomerSearchAPI extends BaseAPI
         }
 
         if ($activityStatus === 'active') {
-            $conds[] = "s.current_ticket_status IN ('assigning','pending','followup')";
+            $conds[] = "COALESCE(s.ticket_count, 0) > 0";
+            $conds[] = "COALESCE(NULLIF(s.current_ticket_status, ''), 'unassigned') IN ('unassigned','assigning','pending','followup')";
         } elseif ($activityStatus === 'overdue') {
             $conds[] = "s.sla_status = 'At Risk'";
         } elseif ($activityStatus === 'churn_risk') {
@@ -160,16 +171,19 @@ class CustomerSearchAPI extends BaseAPI
                 COALESCE(s.ticket_count, 0) AS ticket_count,
                 s.last_contact,
                 COALESCE(s.success_rate, 0) AS success_rate,
-                COALESCE(s.sla_status, 'On Track') AS sla_status,
-                COALESCE(s.success_rate, 0) AS csat_score,
-                s.current_ticket_status
+                COALESCE(s.sla_status, 'No Open Tickets') AS sla_status,
+                NULL AS csat_score,
+                CASE
+                    WHEN COALESCE(s.ticket_count, 0) > 0 THEN COALESCE(NULLIF(s.current_ticket_status, ''), 'unassigned')
+                    ELSE NULL
+                END AS current_ticket_status
                 {$notesSel}
             FROM tbl_user u
             LEFT JOIN tbl_user_ticket_summary s ON s.user_id = u.user_id
             LEFT JOIN tbl_department d ON d.department_id = u.department_id
             {$where}
             ORDER BY
-                FIELD(COALESCE(s.current_ticket_status, ''), 'followup', 'pending', 'assigning', 'complete', '') ASC,
+                FIELD(COALESCE(NULLIF(s.current_ticket_status, ''), ''), 'followup', 'pending', 'unassigned', 'assigning', 'complete', '') ASC,
                 u.user_id DESC
             LIMIT ?, ?
         ";
@@ -223,18 +237,22 @@ class CustomerSearchAPI extends BaseAPI
                 MAX(t.created_at) AS last_contact,
                 ROUND((SUM(CASE WHEN t.status = 'complete' THEN 1 ELSE 0 END) / NULLIF(COUNT(t.ticket_id), 0)) * 100, 1) AS success_rate,
                 CASE
-                    WHEN SUM(CASE WHEN t.sla_date < CURDATE() AND t.status != 'complete' THEN 1 ELSE 0 END) > 0 THEN 'At Risk'
-                    WHEN SUM(CASE WHEN t.sla_date >= CURDATE() AND t.sla_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY) AND t.status != 'complete' THEN 1 ELSE 0 END) > 0 THEN 'Approaching'
-                    ELSE 'On Track'
+                    WHEN SUM(CASE WHEN COALESCE(NULLIF(t.status, ''), 'unassigned') IN ('unassigned','assigning','pending','followup') AND t.sla_date < CURDATE() THEN 1 ELSE 0 END) > 0 THEN 'At Risk'
+                    WHEN SUM(CASE WHEN COALESCE(NULLIF(t.status, ''), 'unassigned') IN ('unassigned','assigning','pending','followup') AND t.sla_date >= CURDATE() AND t.sla_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY) THEN 1 ELSE 0 END) > 0 THEN 'Approaching'
+                    WHEN SUM(CASE WHEN COALESCE(NULLIF(t.status, ''), 'unassigned') IN ('unassigned','assigning','pending','followup') THEN 1 ELSE 0 END) > 0 THEN 'On Track'
+                    ELSE 'No Open Tickets'
                 END AS sla_status,
-                ROUND((SUM(CASE WHEN t.status = 'complete' THEN 1 ELSE 0 END) / NULLIF(COUNT(t.ticket_id), 0)) * 100, 1) AS csat_score,
+                NULL AS csat_score,
                 latest.current_ticket_status
                 {$notesSel}
             FROM tbl_user u
             LEFT JOIN (
-                SELECT x.user_id, x.status AS current_ticket_status
+                SELECT x.user_id, x.normalized_status AS current_ticket_status
                 FROM (
-                    SELECT tt.user_id, tt.status, ROW_NUMBER() OVER (PARTITION BY tt.user_id ORDER BY tt.created_at DESC, tt.ticket_id DESC) AS rn
+                    SELECT
+                        tt.user_id,
+                        COALESCE(NULLIF(tt.status, ''), 'unassigned') AS normalized_status,
+                        ROW_NUMBER() OVER (PARTITION BY tt.user_id ORDER BY tt.created_at DESC, tt.ticket_id DESC) AS rn
                     FROM tbl_ticket tt
                 ) x
                 WHERE x.rn = 1
@@ -248,10 +266,11 @@ class CustomerSearchAPI extends BaseAPI
                 CASE
                     WHEN latest.current_ticket_status = 'followup' THEN 1
                     WHEN latest.current_ticket_status = 'pending' THEN 2
-                    WHEN latest.current_ticket_status = 'assigning' THEN 3
-                    WHEN latest.current_ticket_status = 'complete' THEN 4
-                    WHEN latest.current_ticket_status IS NULL THEN 5
-                    ELSE 6
+                    WHEN latest.current_ticket_status = 'unassigned' THEN 3
+                    WHEN latest.current_ticket_status = 'assigning' THEN 4
+                    WHEN latest.current_ticket_status = 'complete' THEN 5
+                    WHEN latest.current_ticket_status IS NULL THEN 6
+                    ELSE 7
                 END ASC,
                 u.user_id DESC
             LIMIT ?, ?
@@ -294,11 +313,11 @@ class CustomerSearchAPI extends BaseAPI
         }
 
         if ($activityStatus === 'active') {
-            $having[] = "SUM(CASE WHEN t.status IN ('assigning', 'pending', 'followup') THEN 1 ELSE 0 END) > ?";
+            $having[] = "SUM(CASE WHEN COALESCE(NULLIF(t.status, ''), 'unassigned') IN ('unassigned', 'assigning', 'pending', 'followup') THEN 1 ELSE 0 END) > ?";
             $params[] = 0;
             $types .= 'i';
         } elseif ($activityStatus === 'overdue') {
-            $having[] = "SUM(CASE WHEN t.sla_date < CURDATE() AND t.status != 'complete' THEN 1 ELSE 0 END) > ?";
+            $having[] = "SUM(CASE WHEN COALESCE(NULLIF(t.status, ''), 'unassigned') IN ('unassigned', 'assigning', 'pending', 'followup') AND t.sla_date < CURDATE() THEN 1 ELSE 0 END) > ?";
             $params[] = 0;
             $types .= 'i';
         } elseif ($activityStatus === 'churn_risk') {
@@ -362,4 +381,3 @@ class CustomerSearchAPI extends BaseAPI
 
 $api = new CustomerSearchAPI();
 $api->handleRequest();
-
