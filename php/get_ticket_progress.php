@@ -40,7 +40,7 @@ if ($role === 'user') {
 }
 
 $sql = "
-    SELECT t.reference_id, t.ticket_id
+    SELECT t.reference_id, t.ticket_id, t.status
     FROM tbl_ticket t
     WHERE t.reference_id IN ($placeholders)
     $extraWhere
@@ -59,19 +59,44 @@ $stmt->close();
 
 $ticketMap = [];
 while ($row = $ticketResult->fetch_assoc()) {
-    $ticketMap[$row['reference_id']] = (int)$row['ticket_id'];
+    $ticketMap[$row['reference_id']] = [
+        'ticket_id' => (int)$row['ticket_id'],
+        'status' => (string)($row['status'] ?? ''),
+    ];
 }
 
 $data = [];
 foreach ($refs as $ref) {
-    $ticketId = $ticketMap[$ref] ?? null;
-    if ($ticketId === null) {
-        $data[$ref] = checklistComputeProgress([]);
+    $ticketMeta = $ticketMap[$ref] ?? null;
+    if (!is_array($ticketMeta)) {
+        $data[$ref] = [
+            'completed' => 0,
+            'total' => 0,
+            'checklist_percent' => 0,
+            'percent' => 0,
+            'status_label' => 'Unavailable',
+            'stage_key' => 'unknown',
+            'summary' => 'Ticket progress is unavailable.',
+            'remaining_items' => 0,
+        ];
         continue;
     }
 
+    $ticketId = (int)$ticketMeta['ticket_id'];
     $items = checklistFetchItems($conn, $ticketId);
-    $data[$ref] = checklistComputeProgress($items);
+    $checklistProgress = checklistComputeProgress($items);
+    $ticketProgress = checklistComputeTicketProgress((string)$ticketMeta['status'], $checklistProgress);
+
+    $data[$ref] = [
+        'completed' => (int)($checklistProgress['completed'] ?? 0),
+        'total' => (int)($checklistProgress['total'] ?? 0),
+        'checklist_percent' => (int)($checklistProgress['percent'] ?? 0),
+        'percent' => (int)($ticketProgress['percent'] ?? 0),
+        'status_label' => (string)($ticketProgress['status_label'] ?? 'Open'),
+        'stage_key' => (string)($ticketProgress['stage_key'] ?? 'open'),
+        'summary' => (string)($ticketProgress['summary'] ?? ''),
+        'remaining_items' => (int)($ticketProgress['remaining_items'] ?? 0),
+    ];
 }
 
 echo json_encode([

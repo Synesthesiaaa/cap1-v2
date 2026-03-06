@@ -51,7 +51,7 @@ function checklistCurrentActor(): array
 function checklistIsTicketActive(array $ticket): bool
 {
     $status = strtolower((string)($ticket['status'] ?? ''));
-    return !in_array($status, ['complete', 'resolved'], true);
+    return !in_array($status, ['complete', 'resolved', 'closed'], true);
 }
 
 /**
@@ -287,5 +287,109 @@ function checklistComputeProgress(array $items): array
         'required_total' => $requiredTotal,
         'required_completed' => $requiredCompleted,
         'required_percent' => $requiredPercent,
+    ];
+}
+
+/**
+ * Normalize raw ticket status to canonical lifecycle stage.
+ */
+function checklistNormalizeStatusStage(string $status): string
+{
+    $raw = strtolower(trim($status));
+    if ($raw === '') {
+        return 'open';
+    }
+
+    if (in_array($raw, ['assigning', 'unassigned'], true)) {
+        return 'open';
+    }
+    if ($raw === 'pending') {
+        return 'pending';
+    }
+    if ($raw === 'followup') {
+        return 'followup';
+    }
+    if (in_array($raw, ['complete', 'resolved', 'closed'], true)) {
+        return 'complete';
+    }
+
+    return 'open';
+}
+
+/**
+ * Stage label, summary, and floor/next-floor for progress calculation.
+ */
+function checklistStageMeta(string $stage): array
+{
+    $meta = [
+        'open' => [
+            'status_label' => 'Open',
+            'summary' => 'Ticket is open and waiting for active handling.',
+            'floor' => 25,
+            'next_floor' => 50,
+        ],
+        'pending' => [
+            'status_label' => 'Pending',
+            'summary' => 'Ticket is currently being worked on.',
+            'floor' => 50,
+            'next_floor' => 75,
+        ],
+        'followup' => [
+            'status_label' => 'Follow-up',
+            'summary' => 'Ticket requires follow-up or confirmation before completion.',
+            'floor' => 75,
+            'next_floor' => 100,
+        ],
+        'complete' => [
+            'status_label' => 'Complete',
+            'summary' => 'Ticket has been completed.',
+            'floor' => 100,
+            'next_floor' => 100,
+        ],
+    ];
+
+    return $meta[$stage] ?? $meta['open'];
+}
+
+/**
+ * Compute status-aware ticket progress while preserving checklist metrics.
+ */
+function checklistComputeTicketProgress(string $ticketStatus, array $checklistProgress): array
+{
+    $stage = checklistNormalizeStatusStage($ticketStatus);
+    $meta = checklistStageMeta($stage);
+
+    $total = max(0, (int)($checklistProgress['total'] ?? 0));
+    $completed = max(0, (int)($checklistProgress['completed'] ?? 0));
+    $completed = min($completed, $total);
+    $checklistPercent = max(0, min(100, (int)($checklistProgress['percent'] ?? 0)));
+    $remaining = max(0, $total - $completed);
+
+    $ratio = $total > 0 ? ($completed / $total) : 0.0;
+    if ($ratio < 0) {
+        $ratio = 0.0;
+    } elseif ($ratio > 1) {
+        $ratio = 1.0;
+    }
+
+    if ($stage === 'complete') {
+        $percent = 100;
+    } else {
+        $floor = (int)$meta['floor'];
+        $nextFloor = (int)$meta['next_floor'];
+        $range = max(0, ($nextFloor - $floor) - 1);
+        $percent = $floor + (int)round($range * $ratio);
+        $percent = max($floor, min($percent, $nextFloor - 1));
+    }
+
+    return [
+        'stage_key' => $stage,
+        'status_label' => (string)$meta['status_label'],
+        'percent' => $percent,
+        'summary' => (string)$meta['summary'],
+        'checklist_completed' => $completed,
+        'checklist_total' => $total,
+        'checklist_percent' => $checklistPercent,
+        'remaining_items' => $remaining,
     ];
 }

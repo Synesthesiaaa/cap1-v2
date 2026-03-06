@@ -44,56 +44,19 @@ $password = (string)($_POST['password'] ?? '');
 $passwordConfirm = (string)($_POST['password_confirm'] ?? '');
 $company = trim($_POST['company'] ?? '');
 $phone = trim($_POST['phone'] ?? '');
-$termsAccepted = isset($_POST['terms']);
 
 // Validation
 $errors = [];
-$fieldErrors = [];
-
-if ($name === '') {
-    $errors[] = 'Name is required';
-    $fieldErrors['name'] = 'Name is required';
-}
-if ($email === '') {
-    $errors[] = 'Email is required';
-    $fieldErrors['email'] = 'Email is required';
-} elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    $errors[] = 'Email is invalid';
-    $fieldErrors['email'] = 'Email is invalid';
-}
-if ($password === '') {
-    $errors[] = 'Password is required';
-    $fieldErrors['password'] = 'Password is required';
-} else {
-    if (strlen($password) < 10) {
-        $errors[] = 'Password must be at least 10 characters';
-        $fieldErrors['password'] = 'Password must be at least 10 characters';
-    }
-    $complexityIssues = [];
-    if (!preg_match('/[A-Z]/', $password)) $complexityIssues[] = 'an uppercase letter';
-    if (!preg_match('/[a-z]/', $password)) $complexityIssues[] = 'a lowercase letter';
-    if (!preg_match('/[0-9]/', $password)) $complexityIssues[] = 'a number';
-    if (!preg_match('/[^A-Za-z0-9]/', $password)) $complexityIssues[] = 'a special character';
-    if (!empty($complexityIssues)) {
-        $msg = 'Password must contain at least ' . implode(', ', $complexityIssues) . '.';
-        $errors[] = $msg;
-        $fieldErrors['password'] = $msg;
-    }
-}
-if ($passwordConfirm === '') {
-    $errors[] = 'Confirm password is required';
-    $fieldErrors['password_confirm'] = 'Confirm password is required';
-} elseif (!hash_equals($password, $passwordConfirm)) {
-    $errors[] = 'Passwords do not match';
-    $fieldErrors['password_confirm'] = 'Passwords do not match';
-}
-if (!$termsAccepted) {
-    $errors[] = 'You must accept the Terms & Conditions';
-    $fieldErrors['terms'] = 'You must accept the Terms & Conditions';
-}
+if ($name === '') $errors[] = 'Name is required';
+if ($email === '') $errors[] = 'Email is required';
+if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Email is invalid';
+if ($password === '') $errors[] = 'Password is required';
+if ($password !== '' && strlen($password) < 8) $errors[] = 'Password must be at least 8 characters';
+if ($passwordConfirm === '') $errors[] = 'Confirm password is required';
+if ($password !== '' && $passwordConfirm !== '' && !hash_equals($password, $passwordConfirm)) $errors[] = 'Passwords do not match';
 
 if (!empty($errors)) {
-    json_out(['success' => false, 'error' => implode('. ', $errors), 'fieldErrors' => $fieldErrors], 400);
+    json_out(['success' => false, 'error' => implode('. ', $errors)], 400);
 }
 
 // Enforce role/type regardless of client input
@@ -106,23 +69,11 @@ $checkUser = $conn->prepare("SELECT user_id FROM tbl_user WHERE LOWER(email) = ?
 if (!$checkUser) {
     json_out(['success' => false, 'error' => 'Database error'], 500);
 }
-<<<<<<< Updated upstream
 $checkUser->bind_param("s", $email);
 $checkUser->execute();
 if ($checkUser->get_result()->num_rows > 0) {
     $checkUser->close();
     json_out(['success' => false, 'error' => 'Email already in use'], 409);
-=======
-$check->bind_param("s", $email);
-$check->execute();
-if ($check->get_result()->num_rows > 0) {
-    $check->close();
-    json_out([
-        'success' => false,
-        'error' => 'Email already in use',
-        'fieldErrors' => ['email' => 'Email already in use']
-    ], 409);
->>>>>>> Stashed changes
 }
 $checkUser->close();
 

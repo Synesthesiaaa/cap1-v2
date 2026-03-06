@@ -45,6 +45,7 @@ if (!$canView) {
 $ticketId = (int)$ticket['ticket_id'];
 $items = checklistFetchItems($conn, $ticketId);
 $progress = checklistComputeProgress($items);
+$ticketProgress = checklistComputeTicketProgress((string)($ticket['status'] ?? ''), $progress);
 $permissions = checklistPermissionsForCurrentUser($ticket);
 $hasSourceType = checklistHasColumn($conn, 'source_type');
 
@@ -63,6 +64,7 @@ echo json_encode([
     ],
     "items" => $items,
     "progress" => $progress,
+    "ticket_progress" => $ticketProgress,
     "permissions" => $permissions
 ]);
 ?>

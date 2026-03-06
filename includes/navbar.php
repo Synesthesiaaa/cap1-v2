@@ -18,7 +18,7 @@
             <a href="../views/cust_mgmt.php">Customer</a>
             <?php if ($role === 'admin'): ?>
             <a href="../views/user_mgmt.php">Users</a>
-            <a href="../views/sla_weight_admin.php">SLA Weights</a>
+           <!-- <a href="../views/sla_weight_admin.php">SLA Weights</a> -->
             <?php endif; ?>
         <?php else: ?>
             <!-- External customers: land on ticket creation -->
@@ -31,9 +31,9 @@
         <?php else: ?>
             <a href="../views/user_ticket_monitor.php">Tickets</a>
         <?php endif; ?>
-        <?php if (in_array($role, ['admin', 'department_head', 'technician'])): ?>
+        <!-- <?php if (in_array($role, ['admin', 'department_head', 'technician'])): ?>
             <a href="../views/reports.php">Reports</a>
-        <?php endif; ?>
+        <?php endif; ?> -->
         <!-- <a href="../views/settings.php">Settings</a> -->
         <!-- <a href="../views/profile.php">Profile</a> -->
         <a href="../views/logout.php">Logout</a>

@@ -461,7 +461,8 @@ $created_ref = $_GET['ref'] ?? '';
         const payload = await res.json();
         if (!res.ok || !payload.ok) {
           nodes.forEach((node) => {
-            node.textContent = '0/0 (0%)';
+            node.textContent = 'Unavailable • 0%';
+            node.setAttribute('title', 'Ticket progress is unavailable.');
             const fill = node.parentElement?.querySelector('.ticket-progress-mini-fill');
             if (fill) fill.style.width = '0%';
           });
@@ -472,14 +473,23 @@ $created_ref = $_GET['ref'] ?? '';
           const p = payload.data?.[node.dataset.ref];
           const percentRaw = p ? Number(p.percent || 0) : 0;
           const percent = Math.max(0, Math.min(100, Number.isFinite(percentRaw) ? percentRaw : 0));
-          node.textContent = p ? `${p.completed}/${p.total} (${percent}%)` : '0/0 (0%)';
+          const statusLabel = p?.status_label || 'Open';
+          const completed = Number(p?.completed || 0);
+          const total = Number(p?.total || 0);
+          const remaining = Number(p?.remaining_items ?? Math.max(total - completed, 0));
+          node.textContent = `${statusLabel} • ${percent}%`;
+          node.setAttribute(
+            'title',
+            `${p?.summary || 'Ticket progress.'} Checklist: ${completed}/${total} complete, ${Math.max(0, remaining)} remaining.`
+          );
           const fill = node.parentElement?.querySelector('.ticket-progress-mini-fill');
           if (fill) fill.style.width = `${percent}%`;
         });
       } catch (e) {
         console.error('Failed to fetch ticket progress', e);
         nodes.forEach((node) => {
-          node.textContent = '0/0 (0%)';
+          node.textContent = 'Unavailable • 0%';
+          node.setAttribute('title', 'Ticket progress is unavailable.');
           const fill = node.parentElement?.querySelector('.ticket-progress-mini-fill');
           if (fill) fill.style.width = '0%';
         });

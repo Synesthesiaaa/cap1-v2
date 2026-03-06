@@ -389,26 +389,22 @@ $replies_query = "SELECT r.*,
         <!-- Checklist Progress -->
         <div class="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
           <h4 class="text-base font-medium text-gray-800 mb-3">Checklist</h4>
-          <div class="mb-3">
-            <div class="flex items-center justify-between mb-1">
-              <span class="text-xs text-gray-500">Progress</span>
-              <span id="checklistProgressText" class="text-xs text-gray-600">0/0 (0%)</span>
+          <div class="mb-3 rounded-lg border border-brand-100 bg-brand-50/60 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-[11px] font-semibold tracking-wide uppercase text-brand-700">Progress Report</p>
+                <p id="ticketProgressStatus" class="text-sm text-gray-700 mt-1">Open</p>
+              </div>
+              <p id="ticketProgressPercent" class="text-2xl font-semibold text-brand-700 leading-none">0%</p>
             </div>
-            <div class="w-full bg-gray-200 rounded-full h-2">
-              <div id="checklistProgressBar" class="bg-brand-700 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+            <p id="ticketProgressSummary" class="text-sm text-gray-700 mt-2">Ticket progress is loading.</p>
+            <p id="ticketProgressChecklistMeta" class="text-xs text-gray-600 mt-1">Checklist: 0 of 0 complete.</p>
+            <div class="w-full bg-white rounded-full h-2 mt-3">
+              <div id="ticketProgressBar" class="bg-brand-700 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
             </div>
           </div>
 
           <div id="checklistContainer" class="space-y-2 text-sm"></div>
-
-          <div class="mt-3 flex gap-2">
-            <input id="newChecklist" class="w-full border border-gray-200 rounded p-2 text-sm" placeholder="Add checklist item">
-            <label id="newChecklistRequiredWrap" class="hidden items-center gap-1 text-xs text-gray-600 whitespace-nowrap">
-              <input type="checkbox" id="newChecklistRequired" class="rounded border-gray-300">
-              Required
-            </label>
-            <button id="addChecklistBtn" class="bg-brand-700 hover:bg-brand-900 text-white text-sm px-3 py-2 rounded">Add</button>
-          </div>
         </div>
 
         <!-- Quick actions -->
@@ -436,12 +432,13 @@ $replies_query = "SELECT r.*,
     const toggleResolveSmall = document.getElementById('toggleResolveSmall');
     const statusLabel = document.getElementById('statusLabel');
     const checklistContainer = document.getElementById('checklistContainer');
-    const checklistProgressText = document.getElementById('checklistProgressText');
-    const checklistProgressBar = document.getElementById('checklistProgressBar');
+    const ticketProgressStatus = document.getElementById('ticketProgressStatus');
+    const ticketProgressPercent = document.getElementById('ticketProgressPercent');
+    const ticketProgressSummary = document.getElementById('ticketProgressSummary');
+    const ticketProgressChecklistMeta = document.getElementById('ticketProgressChecklistMeta');
+    const ticketProgressBar = document.getElementById('ticketProgressBar');
     const newChecklist = document.getElementById('newChecklist');
     const addChecklistBtn = document.getElementById('addChecklistBtn');
-    const newChecklistRequired = document.getElementById('newChecklistRequired');
-    const newChecklistRequiredWrap = document.getElementById('newChecklistRequiredWrap');
     const ticketRef = '<?php echo htmlspecialchars($ticket_ref, ENT_QUOTES); ?>';
     const canManageStatus = <?php echo $can_manage_status ? 'true' : 'false'; ?>;
     const canViewLogs = <?php echo $can_view_logs ? 'true' : 'false'; ?>;
@@ -718,13 +715,34 @@ $replies_query = "SELECT r.*,
         });
     }
 
-    function renderChecklistProgress(progress) {
-      const p = progress || { completed: 0, total: 0, percent: 0 };
-      if (checklistProgressText) {
-        checklistProgressText.textContent = `${p.completed || 0}/${p.total || 0} (${p.percent || 0}%)`;
+    function renderChecklistProgress(ticketProgress, checklistProgress) {
+      const tp = ticketProgress || {};
+      const cp = checklistProgress || {};
+      const percentRaw = Number(tp.percent ?? 0);
+      const percent = Math.max(0, Math.min(100, Number.isFinite(percentRaw) ? percentRaw : 0));
+      const statusLabel = (tp.status_label || 'Open').toString();
+      const summary = (tp.summary || 'Ticket progress is currently unavailable.').toString();
+      const completed = Number(tp.checklist_completed ?? cp.completed ?? 0);
+      const total = Number(tp.checklist_total ?? cp.total ?? 0);
+      const remaining = Number(tp.remaining_items ?? Math.max(total - completed, 0));
+      const hasItems = total > 0;
+
+      if (ticketProgressStatus) {
+        ticketProgressStatus.textContent = `Status: ${statusLabel}`;
       }
-      if (checklistProgressBar) {
-        checklistProgressBar.style.width = `${p.percent || 0}%`;
+      if (ticketProgressPercent) {
+        ticketProgressPercent.textContent = `${percent}%`;
+      }
+      if (ticketProgressSummary) {
+        ticketProgressSummary.textContent = summary;
+      }
+      if (ticketProgressChecklistMeta) {
+        ticketProgressChecklistMeta.textContent = hasItems
+          ? `Checklist: ${completed}/${total} complete, ${Math.max(0, remaining)} remaining.`
+          : 'Checklist: no items yet.';
+      }
+      if (ticketProgressBar) {
+        ticketProgressBar.style.width = `${percent}%`;
       }
     }
 
@@ -733,7 +751,7 @@ $replies_query = "SELECT r.*,
       checklistContainer.innerHTML = '';
 
       if (!Array.isArray(items) || items.length === 0) {
-        checklistContainer.innerHTML = '<div class="text-xs text-gray-500">No checklist items.</div>';
+        checklistContainer.innerHTML = '';
         return;
       }
 
@@ -811,23 +829,20 @@ $replies_query = "SELECT r.*,
         if (!res.ok || !payload.ok) throw new Error(payload.error || 'Checklist fetch failed');
 
         const canEdit = !!(payload.permissions && payload.permissions.can_edit);
-        const canSetRequired = !!(payload.permissions && payload.permissions.can_set_required);
         if (newChecklist) newChecklist.disabled = !canEdit;
         if (addChecklistBtn) addChecklistBtn.disabled = !canEdit;
-        if (newChecklistRequired) newChecklistRequired.disabled = !canEdit || !canSetRequired;
-        if (newChecklistRequiredWrap) {
-          newChecklistRequiredWrap.classList.toggle('hidden', !canSetRequired);
-          newChecklistRequiredWrap.classList.toggle('flex', canSetRequired);
-        }
 
-        renderChecklistProgress(payload.progress);
+        renderChecklistProgress(payload.ticket_progress, payload.progress);
         renderChecklistItems(payload.items || [], !!(payload.permissions && payload.permissions.can_toggle));
       } catch (err) {
         console.error('Checklist load failed:', err);
         if (checklistContainer) {
           checklistContainer.innerHTML = '<div class="text-xs text-red-500">Failed to load checklist.</div>';
         }
-        renderChecklistProgress({ completed: 0, total: 0, percent: 0 });
+        renderChecklistProgress(
+          { status_label: 'Unavailable', percent: 0, summary: 'Ticket progress is unavailable.', checklist_completed: 0, checklist_total: 0, remaining_items: 0 },
+          { completed: 0, total: 0 }
+        );
       }
     }
 
@@ -842,14 +857,10 @@ $replies_query = "SELECT r.*,
         const body = new URLSearchParams();
         body.append('ref', ticketRef);
         body.append('description', description);
-        if (newChecklistRequired && !newChecklistRequired.disabled) {
-          body.append('is_required', newChecklistRequired.checked ? '1' : '0');
-        }
         const res = await fetch('../php/add_checklist_item.php', { method: 'POST', body });
         const payload = await res.json();
         if (!res.ok || !payload.ok) throw new Error(payload.error || 'Add failed');
         newChecklist.value = '';
-        if (newChecklistRequired) newChecklistRequired.checked = false;
         await loadChecklist();
         showToast('Checklist item added.', 'success');
       } catch (err) {
@@ -1112,4 +1123,3 @@ $replies_query = "SELECT r.*,
   <?php endif; ?>
       </body>
 </Html>
-

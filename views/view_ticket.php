@@ -140,26 +140,21 @@ $is_closed = in_array($current_status, ['complete', 'resolved'], true);
 
     <div class="bg-white p-6 rounded-lg shadow-sm">
       <h2 class="text-xl font-semibold text-gray-800 border-b pb-2">Checklist</h2>
-      <div class="mt-4 mb-4">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-sm font-medium text-gray-700">Progress</span>
-          <span id="checklistProgressText" class="text-sm text-gray-600">0/0 (0%)</span>
+      <div class="mt-4 mb-4 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-xs font-semibold tracking-wide uppercase text-blue-700">Progress Report</p>
+            <p id="ticketProgressStatus" class="text-sm text-gray-700 mt-1">Open</p>
+          </div>
+          <p id="ticketProgressPercent" class="text-2xl font-semibold text-blue-900 leading-none">0%</p>
         </div>
-        <div class="w-full bg-gray-200 rounded-full h-2.5">
-          <div id="checklistProgressBar" class="bg-blue-600 h-2.5 rounded-full" style="width:0%"></div>
+        <p id="ticketProgressSummary" class="text-sm text-gray-700 mt-2">Ticket progress is loading.</p>
+        <p id="ticketProgressChecklistMeta" class="text-xs text-gray-600 mt-1">Checklist: 0 of 0 complete.</p>
+        <div class="w-full bg-white rounded-full h-2.5 mt-3">
+          <div id="ticketProgressBar" class="bg-blue-600 h-2.5 rounded-full" style="width:0%"></div>
         </div>
       </div>
       <div id="checklistContainer" class="space-y-3 mt-4"></div>
-      <?php if (!$is_closed): ?>
-      <div class="flex gap-2 mt-3">
-        <input id="newChecklist" class="border rounded p-2 flex-grow text-sm" placeholder="New checklist item">
-        <label id="newChecklistRequiredWrap" class="hidden items-center gap-1 text-xs text-gray-600 whitespace-nowrap">
-          <input type="checkbox" id="newChecklistRequired" class="rounded border-gray-300">
-          Required
-        </label>
-        <button id="addChecklistBtn" class="bg-blue-900 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">Add</button>
-      </div>
-      <?php endif; ?>
     </div>
 
     <div class="bg-white p-6 rounded-lg shadow-sm">
@@ -375,18 +370,42 @@ $is_closed = in_array($current_status, ['complete', 'resolved'], true);
     await loadComments();
   }
 
-  function renderChecklist(items, progress, perms) {
-    const box = document.getElementById('checklistContainer');
-    const pText = document.getElementById('checklistProgressText');
-    const pBar = document.getElementById('checklistProgressBar');
-    if (!box || !pText || !pBar) return;
+  function renderProgressReport(ticketProgress, checklistProgress) {
+    const statusEl = document.getElementById('ticketProgressStatus');
+    const percentEl = document.getElementById('ticketProgressPercent');
+    const summaryEl = document.getElementById('ticketProgressSummary');
+    const checklistMetaEl = document.getElementById('ticketProgressChecklistMeta');
+    const progressBar = document.getElementById('ticketProgressBar');
+    if (!statusEl || !percentEl || !summaryEl || !checklistMetaEl || !progressBar) return;
 
-    const p = progress || { completed: 0, total: 0, percent: 0 };
-    pText.textContent = `${p.completed || 0}/${p.total || 0} (${p.percent || 0}%)`;
-    pBar.style.width = `${p.percent || 0}%`;
+    const tp = ticketProgress || {};
+    const cp = checklistProgress || {};
+    const percentRaw = Number(tp.percent ?? 0);
+    const percent = Math.max(0, Math.min(100, Number.isFinite(percentRaw) ? percentRaw : 0));
+    const statusLabel = (tp.status_label || 'Open').toString();
+    const summary = (tp.summary || 'Ticket progress is currently unavailable.').toString();
+    const completed = Number(tp.checklist_completed ?? cp.completed ?? 0);
+    const total = Number(tp.checklist_total ?? cp.total ?? 0);
+    const remaining = Number(tp.remaining_items ?? Math.max(total - completed, 0));
+    const hasItems = total > 0;
+
+    statusEl.textContent = `Status: ${statusLabel}`;
+    percentEl.textContent = `${percent}%`;
+    summaryEl.textContent = summary;
+    checklistMetaEl.textContent = hasItems
+      ? `Checklist: ${completed}/${total} complete, ${Math.max(0, remaining)} remaining.`
+      : 'Checklist: no items yet.';
+    progressBar.style.width = `${percent}%`;
+  }
+
+  function renderChecklist(items, progress, ticketProgress, perms) {
+    const box = document.getElementById('checklistContainer');
+    if (!box) return;
+
+    renderProgressReport(ticketProgress, progress);
 
     if (!items.length) {
-      box.innerHTML = '<div class="text-sm text-gray-500">No checklist items.</div>';
+      box.innerHTML = '';
       return;
     }
 
@@ -440,37 +459,28 @@ $is_closed = in_array($current_status, ['complete', 'resolved'], true);
       const data = await jsonFetch(`../php/get_checklist.php?ref=${encodeURIComponent(ref)}`);
       const addBtn = document.getElementById('addChecklistBtn');
       const input = document.getElementById('newChecklist');
-      const requiredWrap = document.getElementById('newChecklistRequiredWrap');
-      const requiredInput = document.getElementById('newChecklistRequired');
       const canEdit = !!(data.permissions && data.permissions.can_edit);
-      const canSetRequired = !!(data.permissions && data.permissions.can_set_required);
       if (addBtn) addBtn.disabled = !canEdit;
       if (input) input.disabled = !canEdit;
-      if (requiredInput) requiredInput.disabled = !canEdit || !canSetRequired;
-      if (requiredWrap) {
-        requiredWrap.classList.toggle('hidden', !canSetRequired);
-        requiredWrap.classList.toggle('flex', canSetRequired);
-      }
-      renderChecklist(data.items || [], data.progress || {}, data.permissions || {});
+      renderChecklist(data.items || [], data.progress || {}, data.ticket_progress || {}, data.permissions || {});
     } catch (e) {
       const box = document.getElementById('checklistContainer');
       if (box) box.innerHTML = '<div class="text-red-500 text-sm">Failed to load checklist.</div>';
+      renderProgressReport(
+        { status_label: 'Unavailable', percent: 0, summary: 'Ticket progress is unavailable.', checklist_completed: 0, checklist_total: 0, remaining_items: 0 },
+        { completed: 0, total: 0 }
+      );
     }
   }
 
   async function addChecklistItem() {
     const input = document.getElementById('newChecklist');
-    const requiredInput = document.getElementById('newChecklistRequired');
     if (!input) return;
     const description = input.value.trim();
     if (!description) return;
     const body = new URLSearchParams({ ref, description });
-    if (requiredInput && !requiredInput.disabled) {
-      body.set('is_required', requiredInput.checked ? '1' : '0');
-    }
     await jsonFetch('../php/add_checklist_item.php', { method: 'POST', body });
     input.value = '';
-    if (requiredInput) requiredInput.checked = false;
     await loadChecklist();
   }
 
