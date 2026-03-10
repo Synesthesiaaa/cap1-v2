@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/ticket_api_common.php';
 require_once __DIR__ . '/ticket_log_helper.php';
+require_once __DIR__ . '/notifications_api.php';
 
 $auth = ticketApiRequireAuth();
 
@@ -69,6 +70,43 @@ if (!$ok) {
 if (function_exists('insertTicketLog')) {
     $excerpt = $reply !== '' ? substr($reply, 0, 100) : '[Attachment only]';
     insertTicketLog($ticketId, $auth['user_id'], $auth['role'], 'reply', 'Added reply: ' . $excerpt, $conn);
+}
+
+// Notify the other party of the new reply
+if (function_exists('createNotification')) {
+    $ticketLink     = 'cust_ticket.php?ref=' . rawurlencode($ref);
+    $replyExcerpt   = $reply !== '' ? (mb_strlen($reply) > 80 ? mb_substr($reply, 0, 80) . '…' : $reply) : 'Sent an attachment';
+    $notifTitle     = 'New reply on ticket #' . $ref;
+
+    if ($repliedBy === 'technician') {
+        // Notify the ticket owner (user in tbl_user)
+        $ownerId = (int)$ticket['user_id'];
+        if ($ownerId > 0) {
+            createNotification(
+                $conn,
+                $ownerId,
+                'user',
+                'reply',
+                $notifTitle,
+                'Support replied: ' . $replyExcerpt,
+                $ticketLink
+            );
+        }
+    } else {
+        // Notify the assigned technician (if any)
+        $assignedTechId = (int)$ticket['assigned_technician_id'];
+        if ($assignedTechId > 0) {
+            createNotification(
+                $conn,
+                $assignedTechId,
+                'technician',
+                'reply',
+                $notifTitle,
+                'Customer replied: ' . $replyExcerpt,
+                $ticketLink
+            );
+        }
+    }
 }
 
 $fetch = $conn->prepare("

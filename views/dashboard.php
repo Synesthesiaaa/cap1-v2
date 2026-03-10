@@ -10,6 +10,9 @@ $user_role = $_SESSION['role'] ?? '';
 $user_id = $_SESSION['id'];
 $user_name = $_SESSION['name'] ?? 'User';
 
+// Base URL for views (ensures ticket links resolve correctly and session is preserved)
+$views_base = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/';
+
 // Pending tasks layout:
 // - Technician: 3 cards → 3 columns on large screens
 // - Department Head (and others with this section): 2 cards → 2 columns on large screens
@@ -63,7 +66,7 @@ if ($user_role === 'technician') {
         </div>
 
         <?php if (in_array($user_role, ['technician','department_head'])): ?>
-        <!-- Alerts Section -->
+        <!-- Alerts Section (technician / department_head) -->
         <div class="mb-8">
             <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
                 <span class="mr-2">🚨</span>Alerts
@@ -93,33 +96,104 @@ if ($user_role === 'technician') {
         </div>
         <?php endif; ?>
 
+        <?php if ($user_role === 'admin'): ?>
+        <!-- Admin System Overview -->
+        <div class="mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-800 flex items-center">
+                    <span class="mr-2">📊</span>System Overview
+                </h2>
+                <button id="refreshAdminBtn" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 text-sm">
+                    Refresh
+                </button>
+            </div>
+            <div id="adminAlertsContainer" class="space-y-3">
+                <div class="animate-pulse text-center py-4"><div class="text-gray-500">Loading alerts...</div></div>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($user_role === 'customer'): ?>
+        <!-- Customer Notifications -->
+        <div class="mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-800 flex items-center">
+                    <span class="mr-2">🔔</span>Notifications
+                    <span id="customerUnreadBadge" class="hidden ml-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full"></span>
+                </h2>
+                <button id="markAllReadBtn" class="hidden text-sm text-blue-600 hover:text-blue-800 font-medium">
+                    Mark all as read
+                </button>
+            </div>
+            <div id="customerNotifsContainer" class="space-y-3">
+                <div class="animate-pulse text-center py-4"><div class="text-gray-500">Loading notifications...</div></div>
+            </div>
+            <!-- Ticket summary cards -->
+            <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-blue-50 border border-blue-200 p-4 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-blue-700" id="custTotalTickets">—</div>
+                    <div class="text-sm text-gray-600 mt-1">Total Tickets</div>
+                </div>
+                <div class="bg-yellow-50 border border-yellow-200 p-4 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-yellow-700" id="custOpenTickets">—</div>
+                    <div class="text-sm text-gray-600 mt-1">Open</div>
+                </div>
+                <div class="bg-green-50 border border-green-200 p-4 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-green-700" id="custClosedTickets">—</div>
+                    <div class="text-sm text-gray-600 mt-1">Resolved</div>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- Quick Actions -->
         <div class="mb-8">
             <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
                 <span class="mr-2">⚡</span>Quick Actions
             </h2>
+            <?php
+                // Role-aware monitor page link (root-relative so session is preserved)
+                if ($user_role === 'technician') {
+                    $myTicketsHref = $views_base . 'tech_ticket_monitor.php';
+                    $myTicketsLabel = 'My Assigned Tickets';
+                    $myTicketsDesc  = 'View and manage your assigned tickets';
+                } elseif ($user_role === 'department_head') {
+                    $myTicketsHref = $views_base . 'department_head_monitor.php';
+                    $myTicketsLabel = 'Ticket Monitor';
+                    $myTicketsDesc  = 'Monitor all tickets in your department';
+                } else {
+                    $myTicketsHref = $views_base . 'user_ticket_monitor.php';
+                    $myTicketsLabel = 'My Tickets';
+                    $myTicketsDesc  = 'View and track your tickets';
+                }
+                // Admins don't need "Create Ticket", show customer management instead
+                $showCreateTicket = !in_array($user_role, ['admin']);
+            ?>
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-6">
-                <a href="../views/create_ticket.php" class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow border border-gray-200">
+                <?php if ($showCreateTicket): ?>
+                <a href="<?php echo htmlspecialchars($views_base); ?>create_ticket.php" class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow border border-gray-200">
                     <div class="text-center">
                         <div class="text-blue-500 text-4xl mb-3">📝</div>
                         <h3 class="font-semibold text-gray-900">Create New Ticket</h3>
                         <p class="text-sm text-gray-600 mt-2">Submit a new support request</p>
                     </div>
                 </a>
-                <a href="../views/user_ticket_monitor.php" class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow border border-gray-200">
+                <?php else: ?>
+                <a href="<?php echo htmlspecialchars($views_base); ?>cust_mgmt.php" class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow border border-gray-200">
                     <div class="text-center">
-                        <div class="text-green-500 text-4xl mb-3">📋</div>
-                        <h3 class="font-semibold text-gray-900">My Tickets</h3>
-                        <p class="text-sm text-gray-600 mt-2">View and track your tickets</p>
+                        <div class="text-blue-500 text-4xl mb-3">👥</div>
+                        <h3 class="font-semibold text-gray-900">Customer Management</h3>
+                        <p class="text-sm text-gray-600 mt-2">Manage customer accounts and tickets</p>
                     </div>
                 </a>
-               <!-- <a href="../views/view_ticket.php" class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow border border-gray-200">
+                <?php endif; ?>
+                <a href="<?php echo htmlspecialchars($myTicketsHref); ?>" class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow border border-gray-200">
                     <div class="text-center">
-                        <div class="text-purple-500 text-4xl mb-3">📈</div>
-                        <h3 class="font-semibold text-gray-900">Ticket History</h3>
-                        <p class="text-sm text-gray-600 mt-2">View completed and archived tickets</p>
+                        <div class="text-green-500 text-4xl mb-3">📋</div>
+                        <h3 class="font-semibold text-gray-900"><?php echo htmlspecialchars($myTicketsLabel); ?></h3>
+                        <p class="text-sm text-gray-600 mt-2"><?php echo htmlspecialchars($myTicketsDesc); ?></p>
                     </div>
-                </a> -->
+                </a>
             </div>
 
             <!-- Dashboard Stats -->
@@ -182,14 +256,44 @@ if ($user_role === 'technician') {
         let alertsData = [];
         let pendingTasksData = [];
         const userRole = "<?php echo htmlspecialchars($user_role, ENT_QUOTES); ?>";
+        const viewsBase = "<?php echo htmlspecialchars($views_base, ENT_QUOTES); ?>";
         const hasRoleDashboard = ['technician','department_head'].includes(userRole);
+
+        // Sanitize strings before inserting into innerHTML
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // Safe JSON fetch with resilient error handling
+        function apiFetch(url) {
+            return fetch(url).then(response => {
+                const contentType = response.headers.get('content-type') || '';
+                if (!contentType.includes('application/json')) {
+                    return response.text().then(text => {
+                        throw new Error('Server returned non-JSON response (HTTP ' + response.status + ')');
+                    });
+                }
+                return response.json().then(data => {
+                    if (!response.ok) {
+                        throw new Error(data.error || 'HTTP ' + response.status);
+                    }
+                    return data;
+                });
+            });
+        }
 
         // Load alerts and pending tasks on page load (for technician, department_head)
         document.addEventListener('DOMContentLoaded', function() {
             if (hasRoleDashboard) {
                 loadAlerts();
                 loadPendingTasks();
-                setInterval(loadAlerts, 300000); // Refresh alerts every 5 minutes
+                setInterval(loadAlerts, 120000); // Refresh alerts every 2 minutes
             }
         });
 
@@ -197,29 +301,16 @@ if ($user_role === 'technician') {
         function loadAlerts() {
             const container = document.getElementById('alertsContainer');
             if (!container) return;
-            
-            fetch('../php/role_dashboard_api.php?action=get_alerts')
-                .then(response => {
-                    if (!response.ok) {
-                        return response.json().then(err => {
-                            throw new Error(err.error || 'HTTP ' + response.status);
-                        });
-                    }
-                    return response.json();
-                })
+
+            apiFetch('../php/role_dashboard_api.php?action=get_alerts')
                 .then(data => {
-                    if (data.error) {
-                        console.error('Error loading alerts:', data.error);
-                        container.innerHTML = '<div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg"><p class="text-sm font-semibold">Error loading alerts:</p><p class="text-sm">' + (data.error || 'Unknown error') + '</p></div>';
-                        return;
-                    }
                     alertsData = Array.isArray(data) ? data : [];
                     renderAlerts();
                 })
                 .catch(error => {
                     console.error('Error loading alerts:', error);
                     if (container) {
-                        container.innerHTML = '<div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg"><p class="text-sm font-semibold">Error loading alerts:</p><p class="text-sm">' + error.message + '</p><p class="text-xs mt-2">Check browser console for details.</p></div>';
+                        container.innerHTML = '<div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg"><p class="text-sm font-semibold">Could not load alerts</p><p class="text-sm">' + escapeHtml(error.message) + '</p></div>';
                     }
                 });
         }
@@ -228,29 +319,16 @@ if ($user_role === 'technician') {
         function loadPendingTasks() {
             const container = document.getElementById('pendingTasksContainer');
             if (!container) return;
-            
-            fetch('../php/role_dashboard_api.php?action=get_dashboard_stats')
-                .then(response => {
-                    if (!response.ok) {
-                        return response.json().then(err => {
-                            throw new Error(err.error || 'HTTP ' + response.status);
-                        });
-                    }
-                    return response.json();
-                })
+
+            apiFetch('../php/role_dashboard_api.php?action=get_dashboard_stats')
                 .then(data => {
-                    if (data.error) {
-                        console.error('Error loading dashboard stats:', data.error);
-                        container.innerHTML = '<div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg"><p class="text-sm font-semibold">Error loading dashboard stats:</p><p class="text-sm">' + (data.error || 'Unknown error') + '</p></div>';
-                        return;
-                    }
                     pendingTasksData = data || {};
                     renderPendingTasks();
                 })
                 .catch(error => {
                     console.error('Error loading dashboard stats:', error);
                     if (container) {
-                        container.innerHTML = '<div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg"><p class="text-sm font-semibold">Error loading dashboard stats:</p><p class="text-sm">' + error.message + '</p><p class="text-xs mt-2">Check browser console for details.</p></div>';
+                        container.innerHTML = '<div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg"><p class="text-sm font-semibold">Could not load task stats</p><p class="text-sm">' + escapeHtml(error.message) + '</p></div>';
                     }
                 });
         }
@@ -295,9 +373,9 @@ if ($user_role === 'technician') {
                     <div class="flex">
                         <div class="flex-shrink-0">${icon}</div>
                         <div class="ml-3">
-                            <h3 class="text-sm font-medium">${alert.title}</h3>
-                            <p class="text-sm mt-1">${alert.message}</p>
-                            <p class="text-xs mt-2">${alert.count ?? 0} items • Click for details</p>
+                            <h3 class="text-sm font-medium">${escapeHtml(alert.title)}</h3>
+                            <p class="text-sm mt-1">${escapeHtml(alert.message)}</p>
+                            <p class="text-xs mt-2">${escapeHtml(alert.count ?? 0)} items • Click for details</p>
                         </div>
                     </div>
                 `;
@@ -318,36 +396,55 @@ if ($user_role === 'technician') {
                 monitorBase = 'department_head_monitor.php';
             }
 
-            // Base tasks shared by all roles that use this dashboard section
-            const tasks = [
-                {
-                    title: 'Tickets Awaiting Evaluation',
-                    count: pendingTasksData.awaiting_evaluation || 0,
-                    description: 'New tickets requiring your review',
-                    icon: '📝',
-                    color: 'blue',
-                    link: monitorBase + '?filter=awaiting'
-                },
-                {
-                    title: 'Recently Assigned',
-                    count: pendingTasksData.assigned_today || 0,
-                    description: 'Tickets assigned today',
-                    icon: '✅',
-                    color: 'green',
-                    link: monitorBase + '?filter=assigned_today'
-                }
-            ];
-
-            // Technicians see the escalation queue card
+            // Cards are role-specific so labels accurately describe the data
+            let tasks = [];
             if (userRole === 'technician') {
-                tasks.push({
-                    title: 'Escalation Queue',
-                    count: pendingTasksData.escalated_tickets || 0,
-                    description: 'Tickets approaching or past SLA',
-                    icon: '⏰',
-                    color: 'red',
-                    link: monitorBase + '?filter=escalated'
-                });
+                tasks = [
+                    {
+                        title: 'My Open Tickets',
+                        count: pendingTasksData.open_tickets || 0,
+                        description: 'Active tickets currently assigned to you',
+                        icon: '📝',
+                        color: 'blue',
+                        link: viewsBase + monitorBase + '?filter=open'
+                    },
+                    {
+                        title: 'New Today',
+                        count: pendingTasksData.new_today || 0,
+                        description: 'Tickets assigned to you that arrived today',
+                        icon: '✅',
+                        color: 'green',
+                        link: viewsBase + monitorBase + '?filter=new_today'
+                    },
+                    {
+                        title: 'Escalation Queue',
+                        count: pendingTasksData.escalated_tickets || 0,
+                        description: 'Tickets approaching or past SLA deadline',
+                        icon: '⏰',
+                        color: 'red',
+                        link: viewsBase + monitorBase + '?filter=escalated'
+                    }
+                ];
+            } else {
+                // department_head
+                tasks = [
+                    {
+                        title: 'Active Department Tickets',
+                        count: pendingTasksData.open_tickets || 0,
+                        description: 'Unassigned and in-progress tickets in your department',
+                        icon: '📝',
+                        color: 'blue',
+                        link: viewsBase + monitorBase + '?filter=active'
+                    },
+                    {
+                        title: 'New Today',
+                        count: pendingTasksData.new_today || 0,
+                        description: 'Tickets submitted to your department today',
+                        icon: '✅',
+                        color: 'green',
+                        link: viewsBase + monitorBase + '?filter=new_today'
+                    }
+                ];
             }
 
             container.innerHTML = '';
@@ -375,18 +472,22 @@ if ($user_role === 'technician') {
 
         // Show alert details in modal
         function showAlertDetails(alert) {
-            document.getElementById('alertModalTitle').textContent = alert.title;
+            document.getElementById('alertModalTitle').textContent = alert.title || 'Alert Details';
+            const details = Array.isArray(alert.details) ? alert.details : [];
+            const detailItems = details.length > 0
+                ? details.map(d => `<li>${escapeHtml(d)}</li>`).join('')
+                : '<li class="text-gray-500">No additional details available.</li>';
             document.getElementById('alertModalContent').innerHTML = `
                 <div class="space-y-4">
-                    <p>${alert.message}</p>
+                    <p>${escapeHtml(alert.message)}</p>
                     <div class="bg-gray-50 rounded-lg p-4">
                         <h4 class="font-medium mb-2">Details:</h4>
                         <ul class="list-disc list-inside space-y-1 text-sm">
-                            ${alert.details.map(detail => `<li>${detail}</li>`).join('')}
+                            ${detailItems}
                         </ul>
                     </div>
                     <div class="flex justify-end">
-                        <a href="${alert.action_url}" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 mr-2">
+                        <a href="${alert.action_url ? escapeHtml(viewsBase + alert.action_url) : '#'}" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 mr-2">
                             Take Action
                         </a>
                         <button onclick="document.getElementById('alertModal').classList.add('hidden')" class="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400">
@@ -426,6 +527,166 @@ if ($user_role === 'technician') {
                 loadPendingTasks();
                 loadAlerts();
             });
+        }
+
+        // ── Customer notifications ────────────────────────────────────────────
+        if (userRole === 'customer') {
+            document.addEventListener('DOMContentLoaded', function() {
+                loadCustomerNotifications();
+                setInterval(loadCustomerNotifications, 60000); // Refresh every minute
+            });
+        }
+
+        function loadCustomerNotifications() {
+            const container = document.getElementById('customerNotifsContainer');
+            if (!container) return;
+
+            apiFetch('../php/role_dashboard_api.php?action=get_customer_notifications')
+                .then(data => {
+                    // Update ticket summary counts
+                    const s = data.ticket_summary || {};
+                    const totalEl  = document.getElementById('custTotalTickets');
+                    const openEl   = document.getElementById('custOpenTickets');
+                    const closedEl = document.getElementById('custClosedTickets');
+                    if (totalEl)  totalEl.textContent  = s.total  ?? 0;
+                    if (openEl)   openEl.textContent   = s.open   ?? 0;
+                    if (closedEl) closedEl.textContent = s.closed ?? 0;
+
+                    // Update unread badge
+                    const badge = document.getElementById('customerUnreadBadge');
+                    const markAllBtn = document.getElementById('markAllReadBtn');
+                    const unread = data.unread_count || 0;
+                    if (badge) {
+                        if (unread > 0) {
+                            badge.textContent = unread > 99 ? '99+' : unread;
+                            badge.classList.remove('hidden');
+                        } else {
+                            badge.classList.add('hidden');
+                        }
+                    }
+                    if (markAllBtn) {
+                        if (unread > 0) {
+                            markAllBtn.classList.remove('hidden');
+                        } else {
+                            markAllBtn.classList.add('hidden');
+                        }
+                    }
+
+                    renderCustomerNotifications(data.notifications || []);
+                })
+                .catch(error => {
+                    console.error('Error loading customer notifications:', error);
+                    if (container) {
+                        container.innerHTML = '<div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">Could not load notifications. Please refresh the page.</div>';
+                    }
+                });
+        }
+
+        function renderCustomerNotifications(notifications) {
+            const container = document.getElementById('customerNotifsContainer');
+            if (!container) return;
+
+            if (!notifications.length) {
+                container.innerHTML = '<div class="bg-gray-50 border border-gray-200 text-gray-600 px-4 py-4 rounded-lg text-sm text-center">No notifications yet. You\'ll be notified when your tickets are updated.</div>';
+                return;
+            }
+
+            const typeIcon = { reply: '💬', status_change: '🔄', assignment: '👤', alert: '⚠️', info: 'ℹ️' };
+            container.innerHTML = notifications.map(n => {
+                const icon     = typeIcon[n.type] || 'ℹ️';
+                const unreadCls = n.is_read == 0 ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-white';
+                const dotHtml  = n.is_read == 0 ? '<span class="inline-block w-2 h-2 bg-blue-500 rounded-full mr-2 flex-shrink-0"></span>' : '<span class="inline-block w-2 h-2 mr-2 flex-shrink-0"></span>';
+                const linkAttr = n.link ? `href="${escapeHtml(n.link)}"` : '';
+                const tag      = n.link ? 'a' : 'div';
+                return `<${tag} ${linkAttr} data-notif-id="${escapeHtml(n.notification_id)}"
+                    class="flex items-start border ${unreadCls} px-4 py-3 rounded-lg cursor-pointer hover:opacity-80 transition-opacity text-sm notif-item"
+                    onclick="markNotifRead(${escapeHtml(n.notification_id)}, this)">
+                    <span class="flex-shrink-0 mr-3 text-base">${icon}</span>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center">${dotHtml}<span class="font-medium truncate">${escapeHtml(n.title)}</span></div>
+                        <p class="text-gray-600 mt-0.5">${escapeHtml(n.message)}</p>
+                        <p class="text-gray-400 text-xs mt-1">${escapeHtml(n.created_at)}</p>
+                    </div>
+                </${tag}>`;
+            }).join('');
+        }
+
+        function markNotifRead(notifId, el) {
+            if (!notifId) return;
+            fetch('../php/notifications_api.php?action=mark_read', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notification_id: notifId })
+            }).then(() => {
+                // Visually mark as read
+                if (el) {
+                    el.classList.remove('border-blue-300', 'bg-blue-50');
+                    el.classList.add('border-gray-200', 'bg-white');
+                    const dot = el.querySelector('span.bg-blue-500');
+                    if (dot) dot.classList.remove('bg-blue-500');
+                }
+                // Refresh badge count
+                loadCustomerNotifications();
+            }).catch(err => console.error('Failed to mark notification read:', err));
+        }
+
+        // Mark all read button
+        const markAllReadBtn = document.getElementById('markAllReadBtn');
+        if (markAllReadBtn) {
+            markAllReadBtn.addEventListener('click', function() {
+                fetch('../php/notifications_api.php?action=mark_all_read', { method: 'POST' })
+                    .then(() => loadCustomerNotifications())
+                    .catch(err => console.error('Failed to mark all read:', err));
+            });
+        }
+
+        // ── Admin system overview ─────────────────────────────────────────────
+        if (userRole === 'admin') {
+            document.addEventListener('DOMContentLoaded', function() {
+                loadAdminOverview();
+                setInterval(loadAdminOverview, 120000); // Refresh every 2 minutes
+            });
+        }
+
+        function loadAdminOverview() {
+            const alertsEl = document.getElementById('adminAlertsContainer');
+            if (!alertsEl) return;
+
+            apiFetch('../php/role_dashboard_api.php?action=get_admin_overview')
+                .then(data => {
+                    if (alertsEl) renderAdminAlerts(data.alerts || []);
+                })
+                .catch(error => {
+                    console.error('Error loading admin overview:', error);
+                    if (alertsEl) alertsEl.innerHTML = '<div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">Could not load admin overview.</div>';
+                });
+        }
+
+        function renderAdminAlerts(alerts) {
+            const container = document.getElementById('adminAlertsContainer');
+            if (!container) return;
+            if (!alerts.length) {
+                container.innerHTML = '<div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg text-sm">✅ No critical system alerts.</div>';
+                return;
+            }
+            container.innerHTML = alerts.map(a => {
+                const cls  = a.type === 'critical' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-yellow-50 border-yellow-200 text-yellow-800';
+                const icon = a.type === 'critical' ? '🚨' : '⚠️';
+                return `<div class="border ${cls} px-4 py-3 rounded-lg flex items-start">
+                    <span class="mr-3 text-base">${icon}</span>
+                    <div>
+                        <p class="text-sm font-semibold">${escapeHtml(a.title)}</p>
+                        <p class="text-sm">${escapeHtml(a.message)}</p>
+                        <a href="${a.action_url ? escapeHtml(viewsBase + a.action_url) : '#'}" class="text-xs underline mt-1 inline-block">View tickets →</a>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // Refresh admin button
+        const refreshAdminBtn = document.getElementById('refreshAdminBtn');
+        if (refreshAdminBtn) {
+            refreshAdminBtn.addEventListener('click', loadAdminOverview);
         }
 
         // Generate report function (placeholder)

@@ -14,8 +14,8 @@ if (!isset($_SESSION['id'])) {
 $role = $_SESSION['role'] ?? '';
 $userId = (int)$_SESSION['id'];
 
-// Only technician and department_head use this API for now
-if (!in_array($role, ['technician', 'department_head'])) {
+$allowedRoles = ['technician', 'department_head', 'customer', 'admin'];
+if (!in_array($role, $allowedRoles)) {
     http_response_code(403);
     echo json_encode(['error' => 'Forbidden']);
     exit();
@@ -30,6 +30,12 @@ try {
             break;
         case 'get_dashboard_stats':
             getDashboardStats($role, $userId);
+            break;
+        case 'get_customer_notifications':
+            getCustomerNotifications($userId);
+            break;
+        case 'get_admin_overview':
+            getAdminOverview($userId);
             break;
         default:
             http_response_code(400);
@@ -60,7 +66,7 @@ function getAlerts(string $role, int $userId) {
                        FROM tbl_ticket 
                        WHERE sla_date IS NOT NULL
                          AND sla_date < NOW() 
-                         AND status NOT IN ('complete', 'closed')
+                         AND status != 'complete'
                          AND assigned_technician_id = ?";
         $stmt = $conn->prepare($overdueSql);
         $stmt->bind_param("i", $techId);
@@ -74,7 +80,7 @@ function getAlerts(string $role, int $userId) {
                            FROM tbl_ticket 
                            WHERE sla_date IS NOT NULL
                              AND sla_date < NOW() 
-                             AND status NOT IN ('complete', 'closed')
+                             AND status != 'complete'
                              AND assigned_technician_id = ?
                            ORDER BY sla_date ASC 
                            LIMIT 5";
@@ -103,7 +109,7 @@ function getAlerts(string $role, int $userId) {
                            FROM tbl_ticket 
                            WHERE sla_date IS NOT NULL
                              AND sla_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
-                             AND status NOT IN ('complete', 'closed')
+                             AND status != 'complete'
                              AND assigned_technician_id = ?";
         $stmt = $conn->prepare($approachingSql);
         $stmt->bind_param("i", $techId);
@@ -117,7 +123,7 @@ function getAlerts(string $role, int $userId) {
                            FROM tbl_ticket 
                            WHERE sla_date IS NOT NULL
                              AND sla_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
-                             AND status NOT IN ('complete', 'closed')
+                             AND status != 'complete'
                              AND assigned_technician_id = ?
                            ORDER BY sla_date ASC 
                            LIMIT 5";
@@ -146,7 +152,7 @@ function getAlerts(string $role, int $userId) {
         $highSql = "SELECT COUNT(*) as count 
                     FROM tbl_ticket 
                     WHERE priority IN ('high', 'critical') 
-                      AND status NOT IN ('complete', 'closed')
+                      AND status != 'complete'
                       AND assigned_technician_id = ?";
         $stmt = $conn->prepare($highSql);
         $stmt->bind_param("i", $techId);
@@ -159,7 +165,7 @@ function getAlerts(string $role, int $userId) {
             $detailsSql = "SELECT reference_id, title, priority 
                            FROM tbl_ticket 
                            WHERE priority IN ('high', 'critical') 
-                             AND status NOT IN ('complete', 'closed')
+                             AND status != 'complete'
                              AND assigned_technician_id = ?
                            ORDER BY 
                                CASE priority 
@@ -200,7 +206,7 @@ function getAlerts(string $role, int $userId) {
                        FROM tbl_ticket 
                        WHERE sla_date IS NOT NULL
                          AND sla_date < NOW() 
-                         AND status NOT IN ('complete', 'closed')
+                         AND status != 'complete'
                          AND type = ?";
         $stmt = $conn->prepare($overdueSql);
         $stmt->bind_param("s", $departmentName);
@@ -214,7 +220,7 @@ function getAlerts(string $role, int $userId) {
                            FROM tbl_ticket 
                            WHERE sla_date IS NOT NULL
                              AND sla_date < NOW() 
-                             AND status NOT IN ('complete', 'closed')
+                             AND status != 'complete'
                              AND type = ?
                            ORDER BY sla_date ASC 
                            LIMIT 5";
@@ -243,7 +249,7 @@ function getAlerts(string $role, int $userId) {
                            FROM tbl_ticket 
                            WHERE sla_date IS NOT NULL
                              AND sla_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
-                             AND status NOT IN ('complete', 'closed')
+                             AND status != 'complete'
                              AND type = ?";
         $stmt = $conn->prepare($approachingSql);
         $stmt->bind_param("s", $departmentName);
@@ -257,7 +263,7 @@ function getAlerts(string $role, int $userId) {
                            FROM tbl_ticket 
                            WHERE sla_date IS NOT NULL
                              AND sla_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
-                             AND status NOT IN ('complete', 'closed')
+                             AND status != 'complete'
                              AND type = ?
                            ORDER BY sla_date ASC 
                            LIMIT 5";
@@ -286,7 +292,7 @@ function getAlerts(string $role, int $userId) {
         $highSql = "SELECT COUNT(*) as count 
                     FROM tbl_ticket 
                     WHERE priority IN ('high', 'critical') 
-                      AND status NOT IN ('complete', 'closed')
+                      AND status != 'complete'
                       AND type = ?";
         $stmt = $conn->prepare($highSql);
         $stmt->bind_param("s", $departmentName);
@@ -299,7 +305,7 @@ function getAlerts(string $role, int $userId) {
             $detailsSql = "SELECT reference_id, title, priority 
                            FROM tbl_ticket 
                            WHERE priority IN ('high', 'critical') 
-                             AND status NOT IN ('complete', 'closed')
+                             AND status != 'complete'
                              AND type = ?
                            ORDER BY 
                                CASE priority 
@@ -338,31 +344,28 @@ function getDashboardStats(string $role, int $userId) {
     if ($role === 'technician') {
         $techId = $userId;
 
-        // Open tickets assigned to this technician
-        $awaitingSql = "SELECT COUNT(*) as count 
-                        FROM tbl_ticket 
-                        WHERE assigned_technician_id = ? 
-                          AND status NOT IN ('complete', 'closed')";
-        $stmt = $conn->prepare($awaitingSql);
+        // All open (non-complete) tickets assigned to this technician
+        $openSql = "SELECT COUNT(*) as count 
+                    FROM tbl_ticket 
+                    WHERE assigned_technician_id = ? 
+                      AND status != 'complete'";
+        $stmt = $conn->prepare($openSql);
         $stmt->bind_param("i", $techId);
         $stmt->execute();
         $result = $stmt->get_result();
         $openTickets = ($row = $result->fetch_assoc()) ? (int)$row['count'] : 0;
         $stmt->close();
 
-        // Tickets completed today by this technician
-        // Note: since tbl_ticket has no updated_at column, we approximate "completed today"
-        // as tickets created today that are now in a completed/closed state.
-        $completedTodaySql = "SELECT COUNT(*) as count 
-                              FROM tbl_ticket 
-                              WHERE assigned_technician_id = ? 
-                                AND status IN ('complete', 'closed')
-                                AND DATE(created_at) = CURDATE()";
-        $stmt = $conn->prepare($completedTodaySql);
+        // Tickets assigned to this technician that were created today (recently assigned)
+        $newTodaySql = "SELECT COUNT(*) as count 
+                        FROM tbl_ticket 
+                        WHERE assigned_technician_id = ? 
+                          AND DATE(created_at) = CURDATE()";
+        $stmt = $conn->prepare($newTodaySql);
         $stmt->bind_param("i", $techId);
         $stmt->execute();
         $result = $stmt->get_result();
-        $completedToday = ($row = $result->fetch_assoc()) ? (int)$row['count'] : 0;
+        $newToday = ($row = $result->fetch_assoc()) ? (int)$row['count'] : 0;
         $stmt->close();
 
         // Escalated tickets (overdue or approaching SLA) for this technician
@@ -370,7 +373,7 @@ function getDashboardStats(string $role, int $userId) {
                          FROM tbl_ticket 
                          WHERE sla_date IS NOT NULL
                            AND (sla_date < NOW() OR sla_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR))
-                           AND status NOT IN ('complete', 'closed')
+                           AND status != 'complete'
                            AND assigned_technician_id = ?";
         $stmt = $conn->prepare($escalatedSql);
         $stmt->bind_param("i", $techId);
@@ -380,9 +383,9 @@ function getDashboardStats(string $role, int $userId) {
         $stmt->close();
 
         echo json_encode([
-            'awaiting_evaluation' => $openTickets,
-            'assigned_today' => $completedToday,
-            'escalated_tickets' => $escalatedTickets
+            'open_tickets'       => $openTickets,
+            'new_today'          => $newToday,
+            'escalated_tickets'  => $escalatedTickets
         ]);
         return;
     }
@@ -391,35 +394,35 @@ function getDashboardStats(string $role, int $userId) {
         $departmentName = getDepartmentHeadDepartmentName($userId);
         if (!$departmentName) {
             echo json_encode([
-                'awaiting_evaluation' => 0,
-                'assigned_today' => 0,
+                'open_tickets'      => 0,
+                'new_today'         => 0,
                 'escalated_tickets' => 0
             ]);
             return;
         }
 
-        // Tickets awaiting action in this department
-        $awaitingSql = "SELECT COUNT(*) as count 
-                        FROM tbl_ticket 
-                        WHERE type = ?
-                          AND status IN ('unassigned', 'pending', 'followup')";
-        $stmt = $conn->prepare($awaitingSql);
+        // Active (non-complete) tickets in this department
+        $activeSql = "SELECT COUNT(*) as count 
+                      FROM tbl_ticket 
+                      WHERE type = ?
+                        AND status IN ('unassigned', 'pending', 'followup')";
+        $stmt = $conn->prepare($activeSql);
         $stmt->bind_param("s", $departmentName);
         $stmt->execute();
         $result = $stmt->get_result();
-        $awaiting = ($row = $result->fetch_assoc()) ? (int)$row['count'] : 0;
+        $activeTickets = ($row = $result->fetch_assoc()) ? (int)$row['count'] : 0;
         $stmt->close();
 
-        // Tickets in this department created today (activity indicator)
-        $assignedTodaySql = "SELECT COUNT(*) as count 
-                             FROM tbl_ticket 
-                             WHERE type = ?
-                               AND DATE(created_at) = CURDATE()";
-        $stmt = $conn->prepare($assignedTodaySql);
+        // Tickets created today in this department
+        $newTodaySql = "SELECT COUNT(*) as count 
+                        FROM tbl_ticket 
+                        WHERE type = ?
+                          AND DATE(created_at) = CURDATE()";
+        $stmt = $conn->prepare($newTodaySql);
         $stmt->bind_param("s", $departmentName);
         $stmt->execute();
         $result = $stmt->get_result();
-        $today = ($row = $result->fetch_assoc()) ? (int)$row['count'] : 0;
+        $newToday = ($row = $result->fetch_assoc()) ? (int)$row['count'] : 0;
         $stmt->close();
 
         // Escalated tickets (overdue or approaching SLA) in this department
@@ -427,7 +430,7 @@ function getDashboardStats(string $role, int $userId) {
                          FROM tbl_ticket 
                          WHERE sla_date IS NOT NULL
                            AND (sla_date < NOW() OR sla_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR))
-                           AND status NOT IN ('complete', 'closed')
+                           AND status != 'complete'
                            AND type = ?";
         $stmt = $conn->prepare($escalatedSql);
         $stmt->bind_param("s", $departmentName);
@@ -437,8 +440,8 @@ function getDashboardStats(string $role, int $userId) {
         $stmt->close();
 
         echo json_encode([
-            'awaiting_evaluation' => $awaiting,
-            'assigned_today' => $today,
+            'open_tickets'      => $activeTickets,
+            'new_today'         => $newToday,
             'escalated_tickets' => $escalatedTickets
         ]);
         return;
@@ -481,4 +484,133 @@ function getDepartmentHeadDepartmentName(int $userId): ?string {
     return $row['department_name'] ?? null;
 }
 
+/**
+ * Customer dashboard: return recent in-app notifications and ticket summary.
+ */
+function getCustomerNotifications(int $userId): void
+{
+    global $conn;
 
+    // Recent in-app notifications from tbl_notification
+    $notifSql = "SELECT notification_id, type, title, message, is_read, link, created_at
+                 FROM tbl_notification
+                 WHERE recipient_id = ? AND recipient_type = 'user'
+                 ORDER BY created_at DESC
+                 LIMIT 10";
+    $stmt = $conn->prepare($notifSql);
+    $stmt->bind_param("i", $userId);
+    $stmt->execute();
+    $notifications = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    // Count unread
+    $unreadSql = "SELECT COUNT(*) AS cnt
+                  FROM tbl_notification
+                  WHERE recipient_id = ? AND recipient_type = 'user' AND is_read = 0";
+    $stmt = $conn->prepare($unreadSql);
+    $stmt->bind_param("i", $userId);
+    $stmt->execute();
+    $unreadCount = (int)$stmt->get_result()->fetch_assoc()['cnt'];
+    $stmt->close();
+
+    // Ticket summary for this user
+    $summarySql = "SELECT
+                       COUNT(*) AS total,
+                       SUM(status != 'complete') AS open_count,
+                       SUM(status = 'complete')  AS closed_count
+                   FROM tbl_ticket
+                   WHERE user_id = ?";
+    $stmt = $conn->prepare($summarySql);
+    $stmt->bind_param("i", $userId);
+    $stmt->execute();
+    $summary = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    echo json_encode([
+        'notifications' => $notifications,
+        'unread_count'  => $unreadCount,
+        'ticket_summary' => [
+            'total'  => (int)($summary['total']  ?? 0),
+            'open'   => (int)($summary['open_count']   ?? 0),
+            'closed' => (int)($summary['closed_count'] ?? 0),
+        ]
+    ]);
+}
+
+/**
+ * Admin dashboard: return system-wide ticket overview and urgent alerts.
+ */
+function getAdminOverview(int $userId): void
+{
+    global $conn;
+
+    // Overall ticket stats
+    $statsSql = "SELECT
+                     COUNT(*) AS total,
+                     SUM(status = 'unassigned') AS unassigned,
+                     SUM(status = 'pending')    AS pending,
+                     SUM(status = 'followup')   AS followup,
+                     SUM(status = 'complete')   AS complete
+                 FROM tbl_ticket";
+    $result = $conn->query($statsSql);
+    $stats  = $result ? $result->fetch_assoc() : [];
+
+    // Overdue tickets (past SLA, not complete)
+    $overdueSql = "SELECT COUNT(*) AS cnt
+                   FROM tbl_ticket
+                   WHERE sla_date IS NOT NULL
+                     AND sla_date < NOW()
+                     AND status != 'complete'";
+    $result   = $conn->query($overdueSql);
+    $overdue  = $result ? (int)$result->fetch_assoc()['cnt'] : 0;
+
+    // Unassigned tickets (need attention)
+    $unassignedSql = "SELECT COUNT(*) AS cnt
+                      FROM tbl_ticket
+                      WHERE status = 'unassigned'";
+    $result     = $conn->query($unassignedSql);
+    $unassigned = $result ? (int)$result->fetch_assoc()['cnt'] : 0;
+
+    // New tickets today
+    $newTodaySql = "SELECT COUNT(*) AS cnt
+                    FROM tbl_ticket
+                    WHERE DATE(created_at) = CURDATE()";
+    $result   = $conn->query($newTodaySql);
+    $newToday = $result ? (int)$result->fetch_assoc()['cnt'] : 0;
+
+    // Build alerts for admin
+    $alerts = [];
+    if ($overdue > 0) {
+        $alerts[] = [
+            'type'       => 'critical',
+            'title'      => 'Overdue Tickets',
+            'message'    => "{$overdue} ticket(s) have passed their SLA deadline system-wide.",
+            'count'      => $overdue,
+            'action_url' => 'user_ticket_monitor.php',
+            'details'    => []
+        ];
+    }
+    if ($unassigned > 0) {
+        $alerts[] = [
+            'type'       => 'warning',
+            'title'      => 'Unassigned Tickets',
+            'message'    => "{$unassigned} ticket(s) are still unassigned and need a technician.",
+            'count'      => $unassigned,
+            'action_url' => 'user_ticket_monitor.php',
+            'details'    => []
+        ];
+    }
+
+    echo json_encode([
+        'stats' => [
+            'total'      => (int)($stats['total']      ?? 0),
+            'unassigned' => (int)($stats['unassigned']  ?? 0),
+            'pending'    => (int)($stats['pending']     ?? 0),
+            'followup'   => (int)($stats['followup']    ?? 0),
+            'complete'   => (int)($stats['complete']    ?? 0),
+            'overdue'    => $overdue,
+            'new_today'  => $newToday,
+        ],
+        'alerts' => $alerts
+    ]);
+}
